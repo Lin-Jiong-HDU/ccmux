@@ -1,5 +1,5 @@
+use ccmux::config::{ActionMode, StrategyConfig};
 use ccmux::server::{Strategy, StrategyEngine};
-use ccmux::config::{StrategyConfig, ActionMode};
 
 #[test]
 fn test_strategy_auto_safe() {

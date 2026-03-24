@@ -1,6 +1,6 @@
-use ccmux::config::{Config, ActionMode};
-use tempfile::NamedTempFile;
+use ccmux::config::{ActionMode, Config};
 use std::io::Write;
+use tempfile::NamedTempFile;
 
 #[test]
 fn test_default_config() {

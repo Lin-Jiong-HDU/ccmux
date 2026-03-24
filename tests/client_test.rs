@@ -10,5 +10,8 @@ fn test_client_creation() {
 fn test_socket_path() {
     let client = Client::new().unwrap();
     // Socket path should end with ccmux.sock
-    assert!(client.socket_path().to_string_lossy().ends_with("ccmux.sock"));
+    assert!(client
+        .socket_path()
+        .to_string_lossy()
+        .ends_with("ccmux.sock"));
 }

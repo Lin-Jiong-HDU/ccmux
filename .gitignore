@@ -1,0 +1,16 @@
+docs/superpowers/
+
+tmp/
+
+.DS_Store
+
+
+# Added by cargo
+
+/target
+
+/Cargo.lock
+
+# Backup files
+**/*.rs.bk
+*.pdb

@@ -2,9 +2,9 @@
 
 use ccmux::client::Client;
 use ccmux::protocol::{Request, Response};
-use std::process::{Command, Child};
-use std::time::Duration;
+use std::process::{Child, Command};
 use std::thread;
+use std::time::Duration;
 
 struct DaemonProcess {
     child: Child,
@@ -45,11 +45,13 @@ fn test_session_lifecycle() {
     let client = Client::new().expect("Failed to create client");
 
     // Create session
-    let session = client.new_session(
-        "test-session".to_string(),
-        Some("/tmp".to_string()),
-        Some("auto-safe".to_string()),
-    ).expect("Failed to create session");
+    let session = client
+        .new_session(
+            "test-session".to_string(),
+            Some("/tmp".to_string()),
+            Some("auto-safe".to_string()),
+        )
+        .expect("Failed to create session");
 
     assert_eq!(session.id, "test-session");
 
@@ -58,7 +60,9 @@ fn test_session_lifecycle() {
     assert!(sessions.iter().any(|s| s.id == "test-session"));
 
     // Kill session
-    client.kill_session("test-session".to_string()).expect("Failed to kill session");
+    client
+        .kill_session("test-session".to_string())
+        .expect("Failed to kill session");
 
     // Verify session is gone
     let sessions = client.list_sessions().expect("Failed to list sessions");
@@ -70,7 +74,10 @@ fn test_client_socket_path() {
     let client = Client::new().unwrap();
     // Socket path should contain ccmux.sock
     let path = client.socket_path().to_string_lossy();
-    assert!(path.contains("ccmux.sock"), "Socket path should contain ccmux.sock");
+    assert!(
+        path.contains("ccmux.sock"),
+        "Socket path should contain ccmux.sock"
+    );
 }
 
 #[test]

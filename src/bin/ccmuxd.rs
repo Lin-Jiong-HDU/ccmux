@@ -1,8 +1,7 @@
 //! ccmuxd - session manager daemon
 
-use ccmux::server::daemon::{Daemon, DaemonConfig};
 use anyhow::Result;
-use tracing_subscriber;
+use ccmux::server::daemon::{Daemon, DaemonConfig};
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -10,9 +9,8 @@ fn main() -> Result<()> {
     let config = DaemonConfig::default();
 
     // Run the daemon (blocking)
-    tokio::runtime::Runtime::new()?
-        .block_on(async {
-            let daemon = Daemon::new(config)?;
-            daemon.run().await
-        })
+    tokio::runtime::Runtime::new()?.block_on(async {
+        let daemon = Daemon::new(config)?;
+        daemon.run().await
+    })
 }

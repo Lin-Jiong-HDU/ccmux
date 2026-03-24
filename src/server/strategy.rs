@@ -40,12 +40,18 @@ impl Strategy {
         let (should_pause, action) = match event {
             "file_read" => (self.should_pause_on_file_read(), self.config.file_read),
             "file_write" => (self.should_pause_on_file_write(), self.config.file_write),
-            "command_exec" => (self.should_pause_on_command_exec(), self.config.command_exec),
+            "command_exec" => (
+                self.should_pause_on_command_exec(),
+                self.config.command_exec,
+            ),
             "tool_use" => (self.should_pause_on_tool_use(), self.config.tool_use),
             _ => (true, ActionMode::Pause), // Default to pause for unknown events
         };
 
-        StrategyResult { should_pause, action }
+        StrategyResult {
+            should_pause,
+            action,
+        }
     }
 }
 

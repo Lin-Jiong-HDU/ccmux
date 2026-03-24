@@ -1,12 +1,12 @@
 //! Session lifecycle management
 
 use crate::protocol::{SessionInfo, SessionStatus};
-use crate::state::SessionState;
 use crate::server::{Pty, PtySize};
+use crate::state::SessionState;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use std::process::Command;
 use std::path::PathBuf;
+use std::process::Command;
 use tokio::sync::mpsc;
 
 /// Session handle for external reference
@@ -18,9 +18,17 @@ pub struct SessionHandle {
 /// Session event for notifications
 #[derive(Debug)]
 pub enum SessionEvent {
-    Output { session: String, output: String },
-    StatusChanged { session: String, status: SessionStatus },
-    Terminated { session: String },
+    Output {
+        session: String,
+        output: String,
+    },
+    StatusChanged {
+        session: String,
+        status: SessionStatus,
+    },
+    Terminated {
+        session: String,
+    },
 }
 
 /// A managed Claude Code session
@@ -148,7 +156,7 @@ impl Session {
     /// Resize the PTY
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<()> {
         if let Some(pty) = &self.pty {
-                pty.resize(PtySize { cols, rows })?;
+            pty.resize(PtySize { cols, rows })?;
         }
         Ok(())
     }
@@ -163,7 +171,11 @@ impl Session {
             strategy: self.strategy.clone(),
             created_at: self.created_at.to_rfc3339(),
             uptime_secs: Some((Utc::now() - self.created_at).num_seconds() as u64),
-            last_output: if self.last_output.is_empty() { None } else { Some(self.last_output.clone()) },
+            last_output: if self.last_output.is_empty() {
+                None
+            } else {
+                Some(self.last_output.clone())
+            },
         }
     }
 

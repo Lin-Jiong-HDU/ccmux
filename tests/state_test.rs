@@ -1,4 +1,4 @@
-use ccmux::state::{State, SessionState, SessionStatus};
+use ccmux::state::{SessionState, SessionStatus, State};
 use tempfile::TempDir;
 
 #[test]

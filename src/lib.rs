@@ -27,15 +27,15 @@
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 
-pub mod state;
-pub mod protocol;
-pub mod config;
-pub mod server;
-pub mod client;
 pub mod cli;
+pub mod client;
+pub mod config;
+pub mod protocol;
+pub mod server;
+pub mod state;
 
-pub use protocol::{Request, Response, SessionStatus, SessionInfo};
-pub use config::{Config, StrategyConfig, ActionMode};
-pub use state::{State, SessionState};
-pub use client::Client;
 pub use cli::{Cli, Command};
+pub use client::Client;
+pub use config::{ActionMode, Config, StrategyConfig};
+pub use protocol::{Request, Response, SessionInfo, SessionStatus};
+pub use state::{SessionState, State};

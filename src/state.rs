@@ -1,11 +1,11 @@
 //! State persistence
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
-use anyhow::Result;
 use std::fs;
 use std::io::Write;
+use std::path::Path;
 
 /// Session status
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

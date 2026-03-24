@@ -1,5 +1,5 @@
-use ccmux::server::SessionHandle;
 use ccmux::protocol::SessionStatus;
+use ccmux::server::SessionHandle;
 
 // Note: Full PTY tests require actual process spawning
 // These are unit tests for the data structures

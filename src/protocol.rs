@@ -20,9 +20,16 @@ pub enum Request {
     #[serde(rename = "send")]
     Send { session: String, text: String },
     #[serde(rename = "output")]
-    Output { session: String, lines: Option<usize> },
+    Output {
+        session: String,
+        lines: Option<usize>,
+    },
     #[serde(rename = "resize")]
-    Resize { session: String, cols: u16, rows: u16 },
+    Resize {
+        session: String,
+        cols: u16,
+        rows: u16,
+    },
     #[serde(rename = "status")]
     Status { session: Option<String> },
     #[serde(rename = "start")]

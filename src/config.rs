@@ -1,15 +1,16 @@
 //! Configuration management
 
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
-use anyhow::Result;
 
 /// Action mode for strategy
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ActionMode {
     Auto,
+    #[default]
     Pause,
 }
 
@@ -19,12 +20,6 @@ impl std::fmt::Display for ActionMode {
             Self::Auto => write!(f, "auto"),
             Self::Pause => write!(f, "pause"),
         }
-    }
-}
-
-impl Default for ActionMode {
-    fn default() -> Self {
-        Self::Pause
     }
 }
 
@@ -85,26 +80,35 @@ impl Default for Config {
     fn default() -> Self {
         let mut strategy = HashMap::new();
 
-        strategy.insert("auto-safe".to_string(), StrategyConfig {
-            file_read: ActionMode::Auto,
-            file_write: ActionMode::Pause,
-            command_exec: ActionMode::Pause,
-            tool_use: ActionMode::Auto,
-        });
+        strategy.insert(
+            "auto-safe".to_string(),
+            StrategyConfig {
+                file_read: ActionMode::Auto,
+                file_write: ActionMode::Pause,
+                command_exec: ActionMode::Pause,
+                tool_use: ActionMode::Auto,
+            },
+        );
 
-        strategy.insert("auto-all".to_string(), StrategyConfig {
-            file_read: ActionMode::Auto,
-            file_write: ActionMode::Auto,
-            command_exec: ActionMode::Auto,
-            tool_use: ActionMode::Auto,
-        });
+        strategy.insert(
+            "auto-all".to_string(),
+            StrategyConfig {
+                file_read: ActionMode::Auto,
+                file_write: ActionMode::Auto,
+                command_exec: ActionMode::Auto,
+                tool_use: ActionMode::Auto,
+            },
+        );
 
-        strategy.insert("manual".to_string(), StrategyConfig {
-            file_read: ActionMode::Pause,
-            file_write: ActionMode::Pause,
-            command_exec: ActionMode::Pause,
-            tool_use: ActionMode::Pause,
-        });
+        strategy.insert(
+            "manual".to_string(),
+            StrategyConfig {
+                file_read: ActionMode::Pause,
+                file_write: ActionMode::Pause,
+                command_exec: ActionMode::Pause,
+                tool_use: ActionMode::Pause,
+            },
+        );
 
         Self {
             default: DefaultConfig {

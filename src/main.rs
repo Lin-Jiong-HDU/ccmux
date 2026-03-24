@@ -1,16 +1,20 @@
 //! ccmux CLI
 
-use clap::Parser;
+use anyhow::Result;
 use ccmux::cli::{Cli, Command};
 use ccmux::client::Client;
-use anyhow::Result;
+use clap::Parser;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let client = Client::new()?;
 
     match cli.command {
-        Command::New { name, cwd, strategy } => {
+        Command::New {
+            name,
+            cwd,
+            strategy,
+        } => {
             let result = client.new_session(name, cwd, strategy)?;
             println!("Created session: {}", result.id);
             println!("  Status: {}", result.status);
@@ -43,15 +47,26 @@ fn main() -> Result<()> {
             println!("Sent.");
         }
 
-        Command::Logs { session, follow, tail } => {
-            println!("Logs for session: {} (follow: {}, tail: {})", session, follow, tail);
+        Command::Logs {
+            session,
+            follow,
+            tail,
+        } => {
+            println!(
+                "Logs for session: {} (follow: {}, tail: {})",
+                session, follow, tail
+            );
             let output = client.get_output(session, Some(tail))?;
             for line in output {
                 println!("  {}", line);
             }
         }
 
-        Command::Status { session, json, watch } => {
+        Command::Status {
+            session,
+            json,
+            watch,
+        } => {
             if watch {
                 println!("Watch mode not yet implemented");
             }
@@ -79,8 +94,10 @@ fn main() -> Result<()> {
 }
 
 fn print_sessions_table(sessions: &[ccmux::protocol::SessionInfo]) {
-    println!("{:<15} {:<10} {:<12} {:<10} {}",
-        "SESSION", "STATUS", "STRATEGY", "UPTIME", "LAST OUTPUT");
+    println!(
+        "{:<15} {:<10} {:<12} {:<10} LAST OUTPUT",
+        "SESSION", "STATUS", "STRATEGY", "UPTIME"
+    );
     println!("{}", "-".repeat(80));
 
     for s in sessions {
@@ -89,12 +106,14 @@ fn print_sessions_table(sessions: &[ccmux::protocol::SessionInfo]) {
             ccmux::protocol::SessionStatus::Paused => "⏸",
             ccmux::protocol::SessionStatus::Stopped => "■",
         };
-        let uptime = s.uptime_secs
+        let uptime = s
+            .uptime_secs
             .map(|u| format!("{}h {}m", u / 3600, (u % 3600) / 60))
             .unwrap_or_else(|| "-".to_string());
         let last_output = s.last_output.as_deref().unwrap_or("-");
 
-        println!("{:<15} {:<10} {:<12} {:<10} {}",
+        println!(
+            "{:<15} {:<10} {:<12} {:<10} {}",
             s.id,
             format!("{} {}", status_symbol, s.status),
             s.strategy,

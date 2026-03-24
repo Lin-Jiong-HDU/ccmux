@@ -3,11 +3,11 @@
 use anyhow::Result;
 use nix::pty::{forkpty, Winsize};
 use nix::unistd::Pid;
+use std::ffi::CString;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, RawFd};
 use std::process::Command;
-use std::ffi::CString;
 
 #[derive(Debug, Clone, Copy)]
 pub struct PtySize {
@@ -65,7 +65,8 @@ impl Pty {
             nix::pty::ForkptyResult::Child => {
                 // Child process - exec the command
                 let program = CString::new(cmd.get_program().to_string_lossy().into_owned())?;
-                let args: Vec<CString> = cmd.get_args()
+                let args: Vec<CString> = cmd
+                    .get_args()
                     .map(|s| CString::new(s.to_string_lossy().into_owned()).unwrap())
                     .collect();
                 nix::unistd::execvp(&program, &args)?;
