@@ -1,8 +1,9 @@
 //! Client for communicating with daemon
 
 use crate::protocol::{Request, Response, SessionInfo, SessionStatusDetail};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::PathBuf;
+use tracing::debug;
 
 /// Client for ccmux daemon
 pub struct Client {
@@ -16,8 +17,11 @@ impl Client {
             .or_else(|_| std::env::var("TMPDIR"))
             .unwrap_or_else(|_| "/tmp".to_string());
 
+        let socket_path = PathBuf::from(runtime_dir).join("ccmux.sock");
+        debug!("Creating client with socket: {}", socket_path.display());
+
         Ok(Self {
-            socket: PathBuf::from(runtime_dir).join("ccmux.sock"),
+            socket: socket_path,
         })
     }
 
@@ -36,16 +40,26 @@ impl Client {
         use std::io::{Read, Write};
         use std::os::unix::net::UnixStream;
 
-        let mut stream = UnixStream::connect(&self.socket)?;
+        let mut stream = UnixStream::connect(&self.socket).with_context(|| {
+            format!(
+                "Failed to connect to daemon socket at {}",
+                self.socket.display()
+            )
+        })?;
 
-        let request_bytes = serde_json::to_vec(&request)?;
-        stream.write_all(&request_bytes)?;
-        stream.flush()?;
+        let request_bytes = serde_json::to_vec(&request).context("Failed to serialize request")?;
+        stream
+            .write_all(&request_bytes)
+            .context("Failed to write request to socket")?;
+        stream.flush().context("Failed to flush socket")?;
 
         let mut buf = Vec::new();
-        stream.read_to_end(&mut buf)?;
+        stream
+            .read_to_end(&mut buf)
+            .context("Failed to read response from socket")?;
 
-        let response: Response = serde_json::from_slice(&buf)?;
+        let response: Response =
+            serde_json::from_slice(&buf).context("Failed to deserialize response")?;
         Ok(response)
     }
 
@@ -70,8 +84,17 @@ impl Client {
     }
 
     /// Create a new session
-    pub fn new_session(&self, name: String, cwd: Option<String>, strategy: Option<String>) -> Result<SessionInfo> {
-        let response = self.send_request(Request::New { name, cwd, strategy })?;
+    pub fn new_session(
+        &self,
+        name: String,
+        cwd: Option<String>,
+        strategy: Option<String>,
+    ) -> Result<SessionInfo> {
+        let response = self.send_request(Request::New {
+            name,
+            cwd,
+            strategy,
+        })?;
         if response.success {
             Ok(serde_json::from_value(response.data.unwrap_or_default())?)
         } else {
@@ -111,7 +134,11 @@ impl Client {
 
     /// Resize session PTY
     pub fn resize_session(&self, session: String, cols: u16, rows: u16) -> Result<()> {
-        let response = self.send_request(Request::Resize { session, cols, rows })?;
+        let response = self.send_request(Request::Resize {
+            session,
+            cols,
+            rows,
+        })?;
         if response.success {
             Ok(())
         } else {
