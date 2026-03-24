@@ -89,10 +89,10 @@ impl Pty {
     }
 
     /// Set PTY window size
-    pub fn resize(&self, _size: PtySize) -> Result<()> {
-        // For now, we'll skip the resize implementation
-        // The ioctl API is complex and varies across platforms
-        // This can be implemented later when needed
+    pub fn resize(&self, size: PtySize) -> Result<()> {
+        let mut winsize = Winsize::from(size);
+        nix::ioctl_readwrite_bad!(pty_set_winsize, nix::libc::TIOCSWINSZ, Winsize);
+        unsafe { pty_set_winsize(self.master.as_raw_fd(), &mut winsize) }?;
         Ok(())
     }
 

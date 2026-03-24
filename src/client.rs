@@ -149,6 +149,13 @@ impl Client {
 
 impl Default for Client {
     fn default() -> Self {
-        Self::new().expect("Failed to create client")
+        // Default to /tmp if environment variables are not set
+        let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
+            .or_else(|_| std::env::var("TMPDIR"))
+            .unwrap_or_else(|_| "/tmp".to_string());
+
+        Self {
+            socket: PathBuf::from(runtime_dir).join("ccmux.sock"),
+        }
     }
 }

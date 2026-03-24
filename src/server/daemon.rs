@@ -1,7 +1,7 @@
 //! Unix socket daemon
 
 use crate::config::Config;
-use crate::protocol::{Request, Response, SessionInfo, SessionStatus};
+use crate::protocol::{Request, Response};
 use crate::server::{Session, SessionEvent};
 use crate::state::State;
 use anyhow::{Context, Result};
@@ -10,8 +10,14 @@ use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixListener;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
+
+/// Internal request with response channel
+struct InternalRequest {
+    request: Request,
+    response_tx: oneshot::Sender<Result<Response>>,
+}
 
 /// Daemon configuration
 #[derive(Debug, Clone)]
@@ -42,6 +48,8 @@ pub struct Daemon {
     sessions: HashMap<String, Session>,
     event_rx: mpsc::UnboundedReceiver<SessionEvent>,
     event_tx: mpsc::UnboundedSender<SessionEvent>,
+    request_rx: mpsc::Receiver<InternalRequest>,
+    request_tx: mpsc::Sender<InternalRequest>,
 }
 
 impl Daemon {
@@ -49,6 +57,7 @@ impl Daemon {
     pub fn new(config: DaemonConfig) -> Result<Self> {
         info!("Initializing ccmuxd daemon");
         let (event_tx, event_rx) = mpsc::unbounded_channel();
+        let (request_tx, request_rx) = mpsc::channel(32);
         let state = State::load().unwrap_or_else(|e| {
             warn!("Failed to load state, using defaults: {}", e);
             State::default()
@@ -70,12 +79,34 @@ impl Daemon {
             sessions: HashMap::new(),
             event_rx,
             event_tx,
+            request_rx,
+            request_tx,
         })
     }
 
     /// Run the daemon
     pub async fn run(mut self) -> Result<()> {
         info!("Starting ccmuxd daemon");
+
+        // Check for existing daemon using lockfile
+        let lock_path = self.config.socket_path.with_extension("lock");
+        if lock_path.exists() {
+            // Try to read PID from lockfile
+            if let Ok(pid_str) = std::fs::read_to_string(&lock_path) {
+                if let Ok(pid) = pid_str.trim().parse::<i32>() {
+                    // Check if process is still running
+                    if nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_ok() {
+                        anyhow::bail!("Another daemon is already running (PID {})", pid);
+                    }
+                }
+            }
+            // Stale lockfile, remove it
+            let _ = std::fs::remove_file(&lock_path);
+        }
+
+        // Create lockfile with our PID
+        std::fs::write(&lock_path, std::process::id().to_string())
+            .with_context(|| format!("Failed to create lockfile at {}", lock_path.display()))?;
 
         // Remove existing socket if present
         if self.config.socket_path.exists() {
@@ -110,6 +141,9 @@ impl Daemon {
 
         info!("ccmuxd listening on {}", self.config.socket_path.display());
 
+        // Clone request_tx for connection handlers
+        let request_tx = self.request_tx.clone();
+
         loop {
             tokio::select! {
                 // Accept new connections
@@ -117,9 +151,9 @@ impl Daemon {
                     match result {
                         Ok((stream, addr)) => {
                             debug!("Accepted connection from {:?}", addr);
-                            let config = self.config.clone();
+                            let request_tx = request_tx.clone();
                             tokio::spawn(async move {
-                                if let Err(e) = handle_connection(stream, config).await {
+                                if let Err(e) = handle_connection(stream, request_tx).await {
                                     error!("Connection handler error: {}", e);
                                 }
                             });
@@ -128,6 +162,12 @@ impl Daemon {
                             error!("Failed to accept connection: {}", e);
                         }
                     }
+                }
+
+                // Handle internal requests from connection handlers
+                Some(internal_req) = self.request_rx.recv() => {
+                    let response = self.handle_request(internal_req.request);
+                    let _ = internal_req.response_tx.send(response);
                 }
 
                 // Handle session events
@@ -150,6 +190,7 @@ impl Daemon {
         if let Err(e) = fs::remove_file(&self.config.socket_path).await {
             warn!("Failed to remove socket: {}", e);
         }
+        let _ = std::fs::remove_file(&lock_path);
         self.state
             .save()
             .context("Failed to save state during shutdown")?;
@@ -165,13 +206,9 @@ impl Daemon {
             }
             SessionEvent::StatusChanged { session, status } => {
                 info!("[{}] Status changed to: {}", session, status);
-                let state_status = match status {
-                    SessionStatus::Running => crate::state::SessionStatus::Running,
-                    SessionStatus::Paused => crate::state::SessionStatus::Paused,
-                    SessionStatus::Stopped => crate::state::SessionStatus::Stopped,
-                };
+                // Now using same SessionStatus from protocol
                 self.state
-                    .update_session_status(&session, state_status)
+                    .update_session_status(&session, status)
                     .with_context(|| format!("Failed to update status for session {}", session))?;
                 self.state
                     .save()
@@ -238,9 +275,21 @@ impl Daemon {
                 let log_path = State::log_path(&name)
                     .with_context(|| format!("Failed to get log path for session {}", name))?;
 
-                let session =
-                    Session::new(name.clone(), cwd, strategy, self.event_tx.clone(), log_path)
+                let mut session =
+                    Session::new(name.clone(), cwd.clone(), strategy, self.event_tx.clone(), log_path)
                         .with_context(|| format!("Failed to create session {}", name))?;
+
+                // Start the session with claude CLI
+                let claude_path = which::which("claude")
+                    .unwrap_or_else(|_| PathBuf::from("claude"));
+
+                let mut cmd = std::process::Command::new(&claude_path);
+                cmd.current_dir(&cwd);
+
+                if let Err(e) = session.start(cmd) {
+                    warn!("Failed to start session {}: {}", name, e);
+                    // Session is created but not started - user can retry
+                }
 
                 let info = session.info();
                 self.state.add_session(session.to_state());
@@ -343,7 +392,7 @@ impl Daemon {
 
 async fn handle_connection(
     mut stream: tokio::net::UnixStream,
-    _config: DaemonConfig,
+    request_tx: mpsc::Sender<InternalRequest>,
 ) -> Result<()> {
     debug!("Handling connection");
 
@@ -358,21 +407,21 @@ async fn handle_connection(
 
     debug!("Received request: {:?}", std::mem::discriminant(&request));
 
-    // For now, handle simple requests that don't need session state
-    // Full implementation would need to communicate with the main daemon loop
-    let response = match request {
-        Request::List => {
-            // Return empty list for now - this would need proper implementation
-            Response::success(
-                serde_json::to_value(Vec::<SessionInfo>::new())
-                    .context("Failed to serialize empty session list")?,
-            )
-        }
-        _ => {
-            warn!("Unsupported request in simple connection handler");
-            Response::error("This command requires daemon mode. Please use 'ccmuxd' directly.")
-        }
-    };
+    // Send request to main daemon loop and wait for response
+    let (response_tx, response_rx) = oneshot::channel();
+
+    request_tx
+        .send(InternalRequest {
+            request,
+            response_tx,
+        })
+        .await
+        .context("Failed to send request to daemon")?;
+
+    let response = response_rx
+        .await
+        .context("Failed to receive response from daemon")?
+        .unwrap_or_else(|e| Response::error(format!("Internal error: {}", e)));
 
     let response_bytes = serde_json::to_vec(&response).context("Failed to serialize response")?;
     stream

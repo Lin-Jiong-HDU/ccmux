@@ -100,6 +100,11 @@ impl Session {
                     let output = String::from_utf8_lossy(&buf[..n]).to_string();
                     self.last_output = output.clone();
 
+                    // Write to log file
+                    if let Err(e) = self.append_log(&output) {
+                        tracing::warn!("Failed to write to log file: {}", e);
+                    }
+
                     // Notify about output
                     let _ = self.event_tx.send(SessionEvent::Output {
                         session: self.id.clone(),
@@ -113,6 +118,26 @@ impl Session {
         } else {
             Ok(String::new())
         }
+    }
+
+    /// Append output to log file
+    fn append_log(&self, output: &str) -> Result<()> {
+        use std::fs::OpenOptions;
+        use std::io::Write;
+
+        // Ensure log directory exists
+        if let Some(parent) = self.log_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.log_path)?;
+
+        write!(file, "{}", output)?;
+        file.flush()?;
+        Ok(())
     }
 
     /// Pause the session
@@ -183,11 +208,7 @@ impl Session {
     pub fn to_state(&self) -> SessionState {
         SessionState {
             id: self.id.clone(),
-            status: match self.status {
-                SessionStatus::Running => crate::state::SessionStatus::Running,
-                SessionStatus::Paused => crate::state::SessionStatus::Paused,
-                SessionStatus::Stopped => crate::state::SessionStatus::Stopped,
-            },
+            status: self.status, // Now using same SessionStatus from protocol
             pid: self.pty.as_ref().map(|p| p.child_pid().as_raw() as u32),
             cwd: self.cwd.clone(),
             strategy: self.strategy.clone(),
