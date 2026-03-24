@@ -7,7 +7,15 @@ use std::ffi::CString;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::os::fd::{AsRawFd, RawFd};
+use std::path::PathBuf;
 use std::process::Command;
+
+/// Pty spawn configuration
+pub struct PtyConfig {
+    pub command: Command,
+    pub cwd: Option<PathBuf>,
+    pub env: Vec<(String, String)>,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct PtySize {
@@ -35,6 +43,9 @@ impl From<PtySize> for Winsize {
     }
 }
 
+// Define ioctl for setting window size (write-only)
+nix::ioctl_write_ptr_bad!(pty_set_winsize, nix::libc::TIOCSWINSZ, Winsize);
+
 /// PTY master handle
 pub struct Pty {
     master: File,
@@ -44,6 +55,12 @@ pub struct Pty {
 impl Pty {
     /// Spawn a new PTY with the given command
     pub fn spawn(cmd: Command) -> Result<Self> {
+        // Extract cwd and env before spawning
+        let cwd = cmd.get_current_dir().map(|p| p.to_path_buf());
+        let env: Vec<_> = cmd.get_envs()
+            .filter_map(|(k, v)| v.map(|v| (k.to_string_lossy().into_owned(), v.to_string_lossy().into_owned())))
+            .collect();
+
         let winsize = Some(Winsize {
             ws_row: 24,
             ws_col: 80,
@@ -63,7 +80,18 @@ impl Pty {
                 })
             }
             nix::pty::ForkptyResult::Child => {
-                // Child process - exec the command
+                // Child process - set cwd and env, then exec
+                if let Some(dir) = cwd {
+                    if let Err(e) = nix::unistd::chdir(&dir) {
+                        eprintln!("Failed to chdir: {}", e);
+                    }
+                }
+
+                // Set environment variables
+                for (key, value) in env {
+                    std::env::set_var(&key, &value);
+                }
+
                 let program = CString::new(cmd.get_program().to_string_lossy().into_owned())?;
                 let args: Vec<CString> = cmd
                     .get_args()
@@ -90,9 +118,8 @@ impl Pty {
 
     /// Set PTY window size
     pub fn resize(&self, size: PtySize) -> Result<()> {
-        let mut winsize = Winsize::from(size);
-        nix::ioctl_readwrite_bad!(pty_set_winsize, nix::libc::TIOCSWINSZ, Winsize);
-        unsafe { pty_set_winsize(self.master.as_raw_fd(), &mut winsize) }?;
+        let winsize = Winsize::from(size);
+        unsafe { pty_set_winsize(self.master.as_raw_fd(), &winsize) }?;
         Ok(())
     }
 

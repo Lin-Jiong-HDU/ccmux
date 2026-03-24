@@ -76,7 +76,7 @@ impl Session {
         self.pty = Some(pty);
         self.status = SessionStatus::Running;
         let _ = self.event_tx.send(SessionEvent::StatusChanged {
-            session: self.id.clone(),
+            session: self.name.clone(),  // Use name for daemon lookup
             status: SessionStatus::Running,
         });
         Ok(())
@@ -107,7 +107,7 @@ impl Session {
 
                     // Notify about output
                     let _ = self.event_tx.send(SessionEvent::Output {
-                        session: self.id.clone(),
+                        session: self.name.clone(),  // Use name for daemon lookup
                         output: output.clone(),
                     });
 
@@ -145,7 +145,7 @@ impl Session {
         if self.status == SessionStatus::Running {
             self.status = SessionStatus::Paused;
             let _ = self.event_tx.send(SessionEvent::StatusChanged {
-                session: self.id.clone(),
+                session: self.name.clone(),  // Use name for daemon lookup
                 status: SessionStatus::Paused,
             });
         }
@@ -157,7 +157,7 @@ impl Session {
         if self.status == SessionStatus::Paused {
             self.status = SessionStatus::Running;
             let _ = self.event_tx.send(SessionEvent::StatusChanged {
-                session: self.id.clone(),
+                session: self.name.clone(),  // Use name for daemon lookup
                 status: SessionStatus::Running,
             });
         }
@@ -169,11 +169,11 @@ impl Session {
         self.pty = None; // Drop PTY, which sends SIGHUP
         self.status = SessionStatus::Stopped;
         let _ = self.event_tx.send(SessionEvent::StatusChanged {
-            session: self.id.clone(),
+            session: self.name.clone(),  // Use name for daemon lookup
             status: SessionStatus::Stopped,
         });
         let _ = self.event_tx.send(SessionEvent::Terminated {
-            session: self.id.clone(),
+            session: self.name.clone(),  // Use name for daemon lookup
         });
         Ok(())
     }

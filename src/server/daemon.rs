@@ -1,7 +1,7 @@
 //! Unix socket daemon
 
 use crate::config::Config;
-use crate::protocol::{Request, Response, SessionStatusDetail};
+use crate::protocol::{Request, Response};
 use crate::server::{Session, SessionEvent};
 use crate::state::State;
 use anyhow::{Context, Result};
@@ -94,13 +94,51 @@ impl Daemon {
         // Create lockfile atomically to prevent race conditions and symlink attacks
         let lock_path = self.config.socket_path.with_extension("lock");
 
-        // Use atomic create_new(true) with restrictive permissions
-        let mut lock_file = OpenOptions::new()
+        // Try to create lockfile atomically
+        let lock_file = OpenOptions::new()
             .write(true)
             .create_new(true)  // Atomic - fails if file exists
             .mode(0o600)       // Restrictive permissions
-            .open(&lock_path)
-            .context("Another daemon instance is already running")?;
+            .open(&lock_path);
+
+        let mut lock_file = match lock_file {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                // Lockfile exists - check if it's stale
+                if let Ok(pid_str) = std::fs::read_to_string(&lock_path) {
+                    if let Ok(pid) = pid_str.trim().parse::<i32>() {
+                        // Check if process is still running
+                        if nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_ok() {
+                            anyhow::bail!("Another daemon is already running (PID {})", pid);
+                        }
+                        // Process is dead - remove stale lockfile
+                        warn!("Removing stale lockfile (PID {} is dead)", pid);
+                        std::fs::remove_file(&lock_path)
+                            .context("Failed to remove stale lockfile")?;
+                        // Retry creating lockfile
+                        OpenOptions::new()
+                            .write(true)
+                            .create_new(true)
+                            .mode(0o600)
+                            .open(&lock_path)
+                            .context("Failed to create lockfile after removing stale one")?
+                    } else {
+                        anyhow::bail!("Invalid PID in lockfile: {}", pid_str);
+                    }
+                } else {
+                    // Can't read lockfile - remove and retry
+                    warn!("Removing unreadable lockfile");
+                    std::fs::remove_file(&lock_path)?;
+                    OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .mode(0o600)
+                        .open(&lock_path)
+                        .context("Failed to create lockfile")?
+                }
+            }
+            Err(e) => return Err(e).context("Failed to create lockfile"),
+        };
 
         // Write our PID to the lockfile
         write!(lock_file, "{}", std::process::id())
