@@ -249,21 +249,26 @@ impl Daemon {
             }
             SessionEvent::StatusChanged { session, status } => {
                 info!("[{}] Status changed to: {}", session, status);
-                // Now using same SessionStatus from protocol
-                self.state
-                    .update_session_status(&session, status)
-                    .with_context(|| format!("Failed to update status for session {}", session))?;
-                self.state
-                    .save()
-                    .context("Failed to save state after status change")?;
+                // Update status in state if session exists
+                match self.state.update_session_status(&session, status) {
+                    Ok(()) => {
+                        if let Err(e) = self.state.save() {
+                            warn!("Failed to save state after status change: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        // Session might not be in state yet - this is OK
+                        debug!("Could not update status in state: {}", e);
+                    }
+                }
             }
             SessionEvent::Terminated { session } => {
                 info!("[{}] Session terminated", session);
                 self.sessions.remove(&session);
                 self.state.remove_session(&session);
-                self.state
-                    .save()
-                    .context("Failed to save state after session termination")?;
+                if let Err(e) = self.state.save() {
+                    warn!("Failed to save state after session termination: {}", e);
+                }
             }
         }
         Ok(())
@@ -319,33 +324,38 @@ impl Daemon {
                 let log_path = State::log_path(&name)
                     .with_context(|| format!("Failed to get log path for session {}", name))?;
 
-                let mut session =
+                let session =
                     Session::new(name.clone(), cwd.clone(), strategy, self.event_tx.clone(), log_path)
                         .with_context(|| format!("Failed to create session {}", name))?;
 
-                // Start the session with claude CLI
+                // Add to state BEFORE starting so event handlers can find it
+                self.state.add_session(session.to_state());
+                self.sessions.insert(name.clone(), session);
+
+                // Now start the session (this sends events that need state to exist)
                 let claude_path = which::which("claude")
                     .unwrap_or_else(|_| PathBuf::from("claude"));
 
                 let mut cmd = std::process::Command::new(&claude_path);
                 cmd.current_dir(&cwd);
 
-                if let Err(e) = session.start(cmd) {
-                    warn!("Failed to start session {}: {}", name, e);
-                    // Session is created but not started - user can retry
+                // Get mutable reference to start the session
+                if let Some(s) = self.sessions.get_mut(&name) {
+                    if let Err(e) = s.start(cmd) {
+                        warn!("Failed to start session {}: {}", name, e);
+                        // Session is created but not started - user can retry
+                    }
+                    let info = s.info();
+                    self.state
+                        .save()
+                        .context("Failed to save state after creating session")?;
+                    debug!("Session created successfully: {}", name);
+                    Ok(Response::success(
+                        serde_json::to_value(info).context("Failed to serialize session info")?,
+                    ))
+                } else {
+                    anyhow::bail!("Session disappeared after insertion")
                 }
-
-                let info = session.info();
-                self.state.add_session(session.to_state());
-                self.sessions.insert(name.clone(), session);
-                self.state
-                    .save()
-                    .context("Failed to save state after creating session")?;
-
-                debug!("Session created successfully: {}", name);
-                Ok(Response::success(
-                    serde_json::to_value(info).context("Failed to serialize session info")?,
-                ))
             }
 
             Request::Kill { session } => {
