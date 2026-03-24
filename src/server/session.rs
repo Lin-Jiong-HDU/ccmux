@@ -1,6 +1,6 @@
 //! Session lifecycle management
 
-use crate::protocol::{SessionInfo, SessionStatus};
+use crate::protocol::{SessionInfo, SessionStatus, SessionStatusDetail};
 use crate::server::{Pty, PtySize};
 use crate::state::SessionState;
 use anyhow::Result;
@@ -76,7 +76,7 @@ impl Session {
         self.pty = Some(pty);
         self.status = SessionStatus::Running;
         let _ = self.event_tx.send(SessionEvent::StatusChanged {
-            session: self.id.clone(),
+            session: self.name.clone(),  // Use name for daemon lookup
             status: SessionStatus::Running,
         });
         Ok(())
@@ -100,9 +100,14 @@ impl Session {
                     let output = String::from_utf8_lossy(&buf[..n]).to_string();
                     self.last_output = output.clone();
 
+                    // Write to log file
+                    if let Err(e) = self.append_log(&output) {
+                        tracing::warn!("Failed to write to log file: {}", e);
+                    }
+
                     // Notify about output
                     let _ = self.event_tx.send(SessionEvent::Output {
-                        session: self.id.clone(),
+                        session: self.name.clone(),  // Use name for daemon lookup
                         output: output.clone(),
                     });
 
@@ -115,12 +120,32 @@ impl Session {
         }
     }
 
+    /// Append output to log file
+    fn append_log(&self, output: &str) -> Result<()> {
+        use std::fs::OpenOptions;
+        use std::io::Write;
+
+        // Ensure log directory exists
+        if let Some(parent) = self.log_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.log_path)?;
+
+        write!(file, "{}", output)?;
+        file.flush()?;
+        Ok(())
+    }
+
     /// Pause the session
     pub fn pause(&mut self) -> Result<()> {
         if self.status == SessionStatus::Running {
             self.status = SessionStatus::Paused;
             let _ = self.event_tx.send(SessionEvent::StatusChanged {
-                session: self.id.clone(),
+                session: self.name.clone(),  // Use name for daemon lookup
                 status: SessionStatus::Paused,
             });
         }
@@ -132,7 +157,7 @@ impl Session {
         if self.status == SessionStatus::Paused {
             self.status = SessionStatus::Running;
             let _ = self.event_tx.send(SessionEvent::StatusChanged {
-                session: self.id.clone(),
+                session: self.name.clone(),  // Use name for daemon lookup
                 status: SessionStatus::Running,
             });
         }
@@ -144,11 +169,11 @@ impl Session {
         self.pty = None; // Drop PTY, which sends SIGHUP
         self.status = SessionStatus::Stopped;
         let _ = self.event_tx.send(SessionEvent::StatusChanged {
-            session: self.id.clone(),
+            session: self.name.clone(),  // Use name for daemon lookup
             status: SessionStatus::Stopped,
         });
         let _ = self.event_tx.send(SessionEvent::Terminated {
-            session: self.id.clone(),
+            session: self.name.clone(),  // Use name for daemon lookup
         });
         Ok(())
     }
@@ -179,15 +204,43 @@ impl Session {
         }
     }
 
+    /// Get session status detail (for status command)
+    pub fn status_detail(&self) -> SessionStatusDetail {
+        let uptime_secs = (Utc::now() - self.created_at).num_seconds() as u64;
+        let uptime = format!("{}h {}m", uptime_secs / 3600, (uptime_secs % 3600) / 60);
+
+        // Get last lines from log file if it exists
+        let last_lines = if self.log_path.exists() {
+            std::fs::read_to_string(&self.log_path)
+                .unwrap_or_default()
+                .lines()
+                .rev()
+                .take(10)
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect()
+        } else {
+            vec![]
+        };
+
+        SessionStatusDetail {
+            session: self.name.clone(),
+            status: self.status,
+            strategy: self.strategy.clone(),
+            uptime,
+            cwd: self.cwd.clone(),
+            pid: self.pty.as_ref().map(|p| p.child_pid().as_raw() as u32),
+            last_lines,
+        }
+    }
+
     /// Convert to state for persistence
     pub fn to_state(&self) -> SessionState {
         SessionState {
             id: self.id.clone(),
-            status: match self.status {
-                SessionStatus::Running => crate::state::SessionStatus::Running,
-                SessionStatus::Paused => crate::state::SessionStatus::Paused,
-                SessionStatus::Stopped => crate::state::SessionStatus::Stopped,
-            },
+            status: self.status, // Now using same SessionStatus from protocol
             pid: self.pty.as_ref().map(|p| p.child_pid().as_raw() as u32),
             cwd: self.cwd.clone(),
             strategy: self.strategy.clone(),

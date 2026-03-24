@@ -38,6 +38,7 @@ impl Client {
     /// Send a request and get response (blocking)
     fn send_request(&self, request: Request) -> Result<Response> {
         use std::io::{Read, Write};
+        use std::net::Shutdown;
         use std::os::unix::net::UnixStream;
 
         let mut stream = UnixStream::connect(&self.socket).with_context(|| {
@@ -52,6 +53,11 @@ impl Client {
             .write_all(&request_bytes)
             .context("Failed to write request to socket")?;
         stream.flush().context("Failed to flush socket")?;
+
+        // Shutdown write side to signal EOF to server
+        stream
+            .shutdown(Shutdown::Write)
+            .context("Failed to shutdown write side")?;
 
         let mut buf = Vec::new();
         stream
@@ -149,6 +155,13 @@ impl Client {
 
 impl Default for Client {
     fn default() -> Self {
-        Self::new().expect("Failed to create client")
+        // Default to /tmp if environment variables are not set
+        let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
+            .or_else(|_| std::env::var("TMPDIR"))
+            .unwrap_or_else(|_| "/tmp".to_string());
+
+        Self {
+            socket: PathBuf::from(runtime_dir).join("ccmux.sock"),
+        }
     }
 }

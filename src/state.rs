@@ -7,16 +7,8 @@ use std::fs;
 use std::io::Write;
 use std::path::Path;
 
-/// Session status
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SessionStatus {
-    #[serde(rename = "running")]
-    Running,
-    #[serde(rename = "paused")]
-    Paused,
-    #[serde(rename = "stopped")]
-    Stopped,
-}
+// Re-export SessionStatus from protocol for backward compatibility
+pub use crate::protocol::SessionStatus;
 
 /// Persisted session state
 #[derive(Debug, Clone, Serialize, Deserialize)]
