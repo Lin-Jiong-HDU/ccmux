@@ -3,9 +3,9 @@
 pub mod pty;
 pub mod session;
 pub mod strategy;
-// pub mod daemon;
+pub mod daemon;
 
 pub use pty::{Pty, PtySize};
 pub use session::{Session, SessionHandle, SessionEvent};
 pub use strategy::{Strategy, StrategyEngine};
-// pub use daemon::{Daemon, DaemonConfig};
+pub use daemon::{Daemon, DaemonConfig};
