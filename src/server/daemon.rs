@@ -4,14 +4,14 @@ use crate::protocol::{Request, Response, SessionStatus, SessionInfo};
 use crate::state::State;
 use crate::server::{Session, SessionEvent};
 use crate::config::Config;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use tokio::net::UnixListener;
 use tokio::sync::mpsc;
 use std::path::PathBuf;
 use std::collections::HashMap;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tracing::{info, error, debug};
+use tracing::{info, error, debug, warn};
 
 /// Daemon configuration
 #[derive(Debug, Clone)]
@@ -46,9 +46,18 @@ pub struct Daemon {
 impl Daemon {
     /// Create a new daemon
     pub fn new(config: DaemonConfig) -> Result<Self> {
+        info!("Initializing ccmuxd daemon");
         let (event_tx, event_rx) = mpsc::unbounded_channel();
-        let state = State::load().unwrap_or_default();
-        let config_loader = Config::load().unwrap_or_default();
+        let state = State::load().unwrap_or_else(|e| {
+            warn!("Failed to load state, using defaults: {}", e);
+            State::default()
+        });
+        let config_loader = Config::load().unwrap_or_else(|e| {
+            warn!("Failed to load config, using defaults: {}", e);
+            Config::default()
+        });
+
+        debug!("Daemon initialized with socket: {}", config.socket_path.display());
 
         Ok(Self {
             config,
@@ -62,17 +71,24 @@ impl Daemon {
 
     /// Run the daemon
     pub async fn run(mut self) -> Result<()> {
+        info!("Starting ccmuxd daemon");
+
         // Remove existing socket if present
         if self.config.socket_path.exists() {
-            fs::remove_file(&self.config.socket_path).await?;
+            debug!("Removing existing socket: {}", self.config.socket_path.display());
+            fs::remove_file(&self.config.socket_path).await
+                .with_context(|| format!("Failed to remove existing socket at {}", self.config.socket_path.display()))?;
         }
 
         // Create socket directory if needed
         if let Some(parent) = self.config.socket_path.parent() {
-            fs::create_dir_all(parent).await?;
+            debug!("Creating socket directory: {}", parent.display());
+            fs::create_dir_all(parent).await
+                .with_context(|| format!("Failed to create socket directory at {}", parent.display()))?;
         }
 
-        let listener = UnixListener::bind(&self.config.socket_path)?;
+        let listener = UnixListener::bind(&self.config.socket_path)
+            .with_context(|| format!("Failed to bind socket at {}", self.config.socket_path.display()))?;
 
         info!("ccmuxd listening on {}", self.config.socket_path.display());
 
@@ -81,16 +97,17 @@ impl Daemon {
                 // Accept new connections
                 result = listener.accept() => {
                     match result {
-                        Ok((stream, _addr)) => {
+                        Ok((stream, addr)) => {
+                            debug!("Accepted connection from {:?}", addr);
                             let config = self.config.clone();
                             tokio::spawn(async move {
                                 if let Err(e) = handle_connection(stream, config).await {
-                                    error!("Connection error: {}", e);
+                                    error!("Connection handler error: {}", e);
                                 }
                             });
                         }
                         Err(e) => {
-                            error!("Connection error: {}", e);
+                            error!("Failed to accept connection: {}", e);
                         }
                     }
                 }
@@ -98,22 +115,27 @@ impl Daemon {
                 // Handle session events
                 Some(event) = self.event_rx.recv() => {
                     if let Err(e) = self.handle_session_event(event).await {
-                        error!("Session event error: {}", e);
+                        error!("Session event handler error: {}", e);
                     }
                 }
 
                 // Shutdown signal
                 _ = tokio::signal::ctrl_c() => {
-                    info!("Shutting down...");
+                    info!("Received shutdown signal");
                     break;
                 }
             }
         }
 
         // Cleanup
-        fs::remove_file(&self.config.socket_path).await.ok();
-        self.state.save()?;
+        info!("Cleaning up socket and saving state");
+        if let Err(e) = fs::remove_file(&self.config.socket_path).await {
+            warn!("Failed to remove socket: {}", e);
+        }
+        self.state.save()
+            .context("Failed to save state during shutdown")?;
 
+        info!("Daemon shutdown complete");
         Ok(())
     }
 
@@ -123,20 +145,23 @@ impl Daemon {
                 debug!("[{}] Output: {} bytes", session, output.len());
             }
             SessionEvent::StatusChanged { session, status } => {
-                info!("[{}] Status: {}", session, status);
+                info!("[{}] Status changed to: {}", session, status);
                 let state_status = match status {
                     SessionStatus::Running => crate::state::SessionStatus::Running,
                     SessionStatus::Paused => crate::state::SessionStatus::Paused,
                     SessionStatus::Stopped => crate::state::SessionStatus::Stopped,
                 };
-                self.state.update_session_status(&session, state_status)?;
-                self.state.save()?;
+                self.state.update_session_status(&session, state_status)
+                    .with_context(|| format!("Failed to update status for session {}", session))?;
+                self.state.save()
+                    .context("Failed to save state after status change")?;
             }
             SessionEvent::Terminated { session } => {
-                info!("[{}] Terminated", session);
+                info!("[{}] Session terminated", session);
                 self.sessions.remove(&session);
                 self.state.remove_session(&session);
-                self.state.save()?;
+                self.state.save()
+                    .context("Failed to save state after session termination")?;
             }
         }
         Ok(())
@@ -144,26 +169,35 @@ impl Daemon {
 
     /// Handle a request synchronously (for simpler operations)
     pub fn handle_request(&mut self, request: Request) -> Result<Response> {
+        debug!("Handling request: {:?}", std::mem::discriminant(&request));
+
         match request {
             Request::List => {
+                debug!("Listing sessions");
                 let sessions: Vec<_> = self.sessions.values()
                     .map(|s| s.info())
                     .collect();
-                Ok(Response::success(serde_json::to_value(sessions)?))
+                Ok(Response::success(serde_json::to_value(sessions)
+                    .context("Failed to serialize session list")?))
             }
 
             Request::Status { session } => {
                 if let Some(name) = session {
+                    debug!("Getting status for session: {}", name);
                     if let Some(s) = self.sessions.get(&name) {
-                        Ok(Response::success(serde_json::to_value(s.info())?))
+                        Ok(Response::success(serde_json::to_value(s.info())
+                            .context("Failed to serialize session info")?))
                     } else {
-                        Ok(Response::error("Session not found"))
+                        warn!("Session not found: {}", name);
+                        Ok(Response::error(format!("Session '{}' not found", name)))
                     }
                 } else {
+                    debug!("Getting status for all sessions");
                     let sessions: Vec<_> = self.sessions.values()
                         .map(|s| s.info())
                         .collect();
-                    Ok(Response::success(serde_json::to_value(sessions)?))
+                    Ok(Response::success(serde_json::to_value(sessions)
+                        .context("Failed to serialize session list")?))
                 }
             }
 
