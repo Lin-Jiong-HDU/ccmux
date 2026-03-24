@@ -1,6 +1,6 @@
 //! Session lifecycle management
 
-use crate::protocol::{SessionInfo, SessionStatus};
+use crate::protocol::{SessionInfo, SessionStatus, SessionStatusDetail};
 use crate::server::{Pty, PtySize};
 use crate::state::SessionState;
 use anyhow::Result;
@@ -201,6 +201,38 @@ impl Session {
             } else {
                 Some(self.last_output.clone())
             },
+        }
+    }
+
+    /// Get session status detail (for status command)
+    pub fn status_detail(&self) -> SessionStatusDetail {
+        let uptime_secs = (Utc::now() - self.created_at).num_seconds() as u64;
+        let uptime = format!("{}h {}m", uptime_secs / 3600, (uptime_secs % 3600) / 60);
+
+        // Get last lines from log file if it exists
+        let last_lines = if self.log_path.exists() {
+            std::fs::read_to_string(&self.log_path)
+                .unwrap_or_default()
+                .lines()
+                .rev()
+                .take(10)
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect()
+        } else {
+            vec![]
+        };
+
+        SessionStatusDetail {
+            session: self.name.clone(),
+            status: self.status,
+            strategy: self.strategy.clone(),
+            uptime,
+            cwd: self.cwd.clone(),
+            pid: self.pty.as_ref().map(|p| p.child_pid().as_raw() as u32),
+            last_lines,
         }
     }
 

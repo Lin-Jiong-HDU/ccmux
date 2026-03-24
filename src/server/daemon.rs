@@ -1,11 +1,14 @@
 //! Unix socket daemon
 
 use crate::config::Config;
-use crate::protocol::{Request, Response};
+use crate::protocol::{Request, Response, SessionStatusDetail};
 use crate::server::{Session, SessionEvent};
 use crate::state::State;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -88,25 +91,27 @@ impl Daemon {
     pub async fn run(mut self) -> Result<()> {
         info!("Starting ccmuxd daemon");
 
-        // Check for existing daemon using lockfile
+        // Create lockfile atomically to prevent race conditions and symlink attacks
         let lock_path = self.config.socket_path.with_extension("lock");
-        if lock_path.exists() {
-            // Try to read PID from lockfile
-            if let Ok(pid_str) = std::fs::read_to_string(&lock_path) {
-                if let Ok(pid) = pid_str.trim().parse::<i32>() {
-                    // Check if process is still running
-                    if nix::sys::signal::kill(nix::unistd::Pid::from_raw(pid), None).is_ok() {
-                        anyhow::bail!("Another daemon is already running (PID {})", pid);
-                    }
-                }
-            }
-            // Stale lockfile, remove it
-            let _ = std::fs::remove_file(&lock_path);
-        }
 
-        // Create lockfile with our PID
-        std::fs::write(&lock_path, std::process::id().to_string())
-            .with_context(|| format!("Failed to create lockfile at {}", lock_path.display()))?;
+        // Use atomic create_new(true) with restrictive permissions
+        let mut lock_file = OpenOptions::new()
+            .write(true)
+            .create_new(true)  // Atomic - fails if file exists
+            .mode(0o600)       // Restrictive permissions
+            .open(&lock_path)
+            .context("Another daemon instance is already running")?;
+
+        // Write our PID to the lockfile
+        write!(lock_file, "{}", std::process::id())
+            .context("Failed to write PID to lockfile")?;
+        lock_file.flush().context("Failed to flush lockfile")?;
+
+        // Ensure lockfile is removed on drop
+        let lock_path_clone = lock_path.clone();
+        let _guard = scopeguard::guard(lock_path_clone, |path| {
+            let _ = std::fs::remove_file(&path);
+        });
 
         // Remove existing socket if present
         if self.config.socket_path.exists() {
@@ -190,7 +195,7 @@ impl Daemon {
         if let Err(e) = fs::remove_file(&self.config.socket_path).await {
             warn!("Failed to remove socket: {}", e);
         }
-        let _ = std::fs::remove_file(&lock_path);
+        // Lockfile is removed automatically by the guard
         self.state
             .save()
             .context("Failed to save state during shutdown")?;
@@ -244,8 +249,8 @@ impl Daemon {
                     debug!("Getting status for session: {}", name);
                     if let Some(s) = self.sessions.get(&name) {
                         Ok(Response::success(
-                            serde_json::to_value(s.info())
-                                .context("Failed to serialize session info")?,
+                            serde_json::to_value(s.status_detail())
+                                .context("Failed to serialize session status detail")?,
                         ))
                     } else {
                         warn!("Session not found: {}", name);
@@ -253,10 +258,11 @@ impl Daemon {
                     }
                 } else {
                     debug!("Getting status for all sessions");
-                    let sessions: Vec<_> = self.sessions.values().map(|s| s.info()).collect();
+                    // When no session specified, return list of status details
+                    let details: Vec<_> = self.sessions.values().map(|s| s.status_detail()).collect();
                     Ok(Response::success(
-                        serde_json::to_value(sessions)
-                            .context("Failed to serialize session list")?,
+                        serde_json::to_value(details)
+                            .context("Failed to serialize status list")?,
                     ))
                 }
             }
@@ -396,12 +402,12 @@ async fn handle_connection(
 ) -> Result<()> {
     debug!("Handling connection");
 
-    let mut buf = vec![0u8; 65536];
-    let n = stream
-        .read(&mut buf)
+    // Read until EOF - client should close write side after sending request
+    let mut buf = Vec::new();
+    stream
+        .read_to_end(&mut buf)
         .await
         .context("Failed to read from socket")?;
-    buf.truncate(n);
 
     let request: Request = serde_json::from_slice(&buf).context("Failed to deserialize request")?;
 
