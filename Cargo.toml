@@ -20,6 +20,7 @@ chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
 which = "6.0"
 scopeguard = "1.2"
+regex = "1.10"
 
 [dev-dependencies]
 tempfile = "3.8"

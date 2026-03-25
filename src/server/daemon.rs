@@ -440,6 +440,16 @@ impl Daemon {
                 // Signal shutdown
                 Ok(Response::success(serde_json::json!({"stopping": true})))
             }
+
+            Request::Subscribe { .. } => {
+                // TODO: Implement in Task 3
+                Ok(Response::error("Subscribe not yet implemented"))
+            }
+
+            Request::Wait { .. } => {
+                // TODO: Implement in Task 6
+                Ok(Response::error("Wait not yet implemented"))
+            }
         }
     }
 }
