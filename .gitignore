@@ -1,4 +1,9 @@
-docs/superpowers/
+# Ignore all docs by default
+docs/**
+
+# Whitelist specific docs files here (uncomment/add as needed)
+# !docs/important-doc.md
+
 
 tmp/
 
