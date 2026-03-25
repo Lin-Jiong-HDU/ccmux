@@ -36,6 +36,19 @@ pub enum Request {
     StartDaemon,
     #[serde(rename = "stop")]
     StopDaemon,
+    #[serde(rename = "subscribe")]
+    Subscribe {
+        session: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        since: Option<u64>,
+    },
+    #[serde(rename = "wait")]
+    Wait {
+        session: String,
+        pattern: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        timeout: Option<u64>,
+    },
 }
 
 /// Server response
@@ -116,4 +129,31 @@ pub struct SessionStatusDetail {
     pub cwd: String,
     pub pid: Option<u32>,
     pub last_lines: Vec<String>,
+}
+
+/// 流式事件 (用于 subscribe)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StreamEvent {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ts: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<SessionStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Wait 响应
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WaitResult {
+    pub matched: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<u64>,
 }
