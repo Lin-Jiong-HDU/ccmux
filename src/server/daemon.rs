@@ -1,7 +1,7 @@
 //! Unix socket daemon
 
 use crate::config::Config;
-use crate::protocol::{Request, Response, WaitResult};
+use crate::protocol::{Request, Response, StreamEvent, WaitResult};
 use crate::server::{Session, SessionEvent};
 use crate::state::State;
 use anyhow::{Context, Result};
@@ -441,9 +441,26 @@ impl Daemon {
                 Ok(Response::success(serde_json::json!({"stopping": true})))
             }
 
-            Request::Subscribe { .. } => {
-                // TODO: Implement in Task 3
-                Ok(Response::error("Subscribe not yet implemented"))
+            Request::Subscribe { session, since } => {
+                debug!("Subscribing to session: {}", session);
+                if let Some(s) = self.sessions.get(&session) {
+                    let events: Vec<StreamEvent> = s.output_buffer()
+                        .since(since.unwrap_or(0))
+                        .iter()
+                        .map(|o| StreamEvent {
+                            event_type: "output".to_string(),
+                            ts: Some(o.ts),
+                            text: Some(o.text.clone()),
+                            status: None,
+                            reason: None,
+                        })
+                        .collect();
+
+                    Ok(Response::success(serde_json::to_value(events)?))
+                } else {
+                    warn!("Session not found: {}", session);
+                    Ok(Response::error(format!("Session '{}' not found", session)))
+                }
             }
 
             Request::Wait { session, pattern, timeout: _ } => {
