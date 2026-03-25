@@ -1,7 +1,7 @@
 //! Unix socket daemon
 
 use crate::config::Config;
-use crate::protocol::{Request, Response};
+use crate::protocol::{Request, Response, WaitResult};
 use crate::server::{Session, SessionEvent};
 use crate::state::State;
 use anyhow::{Context, Result};
@@ -446,9 +446,34 @@ impl Daemon {
                 Ok(Response::error("Subscribe not yet implemented"))
             }
 
-            Request::Wait { .. } => {
-                // TODO: Implement in Task 6
-                Ok(Response::error("Wait not yet implemented"))
+            Request::Wait { session, pattern, timeout: _ } => {
+                debug!("Waiting for pattern '{}' in session: {}", pattern, session);
+
+                if let Some(s) = self.sessions.get(&session) {
+                    // 在输出缓冲区中搜索模式
+                    match s.output_buffer().find_pattern(&pattern) {
+                        Some(output) => {
+                            Ok(Response::success(serde_json::to_value(WaitResult {
+                                matched: true,
+                                pattern: Some(pattern.clone()),
+                                output: Some(output.text.clone()),
+                                timestamp: Some(output.ts),
+                            })?))
+                        }
+                        None => {
+                            // 没有找到匹配
+                            Ok(Response::success(serde_json::to_value(WaitResult {
+                                matched: false,
+                                pattern: Some(pattern),
+                                output: None,
+                                timestamp: None,
+                            })?))
+                        }
+                    }
+                } else {
+                    warn!("Session not found: {}", session);
+                    Ok(Response::error(format!("Session '{}' not found", session)))
+                }
             }
         }
     }
