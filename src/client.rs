@@ -1,6 +1,6 @@
 //! Client for communicating with daemon
 
-use crate::protocol::{Request, Response, SessionInfo, SessionStatusDetail};
+use crate::protocol::{Request, Response, SessionInfo, SessionStatusDetail, StreamEvent, WaitResult};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use tracing::debug;
@@ -149,6 +149,60 @@ impl Client {
             Ok(())
         } else {
             anyhow::bail!("{}", response.error.unwrap_or_default())
+        }
+    }
+
+    /// Subscribe to session output stream (returns events since timestamp)
+    pub fn subscribe(&self, session: &str, since: Option<u64>) -> Result<Vec<StreamEvent>> {
+        let response = self.send_request(Request::Subscribe {
+            session: session.to_string(),
+            since,
+        })?;
+
+        if response.success {
+            Ok(serde_json::from_value(response.data.unwrap_or_default())?)
+        } else {
+            anyhow::bail!("{}", response.error.unwrap_or_default())
+        }
+    }
+
+    /// Wait for a pattern in session output
+    pub fn wait(&self, session: &str, pattern: &str, timeout: Option<u64>) -> Result<WaitResult> {
+        let response = self.send_request(Request::Wait {
+            session: session.to_string(),
+            pattern: pattern.to_string(),
+            timeout,
+        })?;
+
+        if response.success {
+            Ok(serde_json::from_value(response.data.unwrap_or_default())?)
+        } else {
+            anyhow::bail!("{}", response.error.unwrap_or_default())
+        }
+    }
+
+    /// Wait with polling (for patterns not yet in buffer)
+    pub fn wait_with_poll(&self, session: &str, pattern: &str, timeout_ms: u64) -> Result<WaitResult> {
+        let start = std::time::Instant::now();
+        let poll_interval = 100; // ms
+
+        loop {
+            let result = self.wait(session, pattern, None)?;
+
+            if result.matched {
+                return Ok(result);
+            }
+
+            if start.elapsed().as_millis() as u64 >= timeout_ms {
+                return Ok(WaitResult {
+                    matched: false,
+                    pattern: Some(pattern.to_string()),
+                    output: None,
+                    timestamp: None,
+                });
+            }
+
+            std::thread::sleep(std::time::Duration::from_millis(poll_interval));
         }
     }
 }
