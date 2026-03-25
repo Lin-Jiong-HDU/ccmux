@@ -28,14 +28,17 @@ In another terminal:
 # Create a new session
 ccmux new -n backend
 
-# List sessions
+# List sessions (use --json for machine-readable output)
 ccmux ls
+ccmux ls --json
 
 # View session logs
-ccmux logs backend -f
+ccmux logs backend -f          # Follow mode
+ccmux logs backend --tail 100  # Custom line count (default: 50)
 
 # Get session status
 ccmux status backend
+ccmux status backend --json    # JSON output
 
 # Send input to session
 ccmux send backend "continue"
