@@ -88,6 +88,47 @@ fn main() -> Result<()> {
             // TODO: Implement daemon stop via socket
             println!("(Stop not yet implemented)");
         }
+
+        Command::Wait { session, pattern, timeout } => {
+            println!("Waiting for pattern '{}' (timeout: {}s)...", pattern, timeout);
+
+            let result = client.wait_with_poll(&session, &pattern, timeout * 1000)?;
+
+            if result.matched {
+                println!("✓ Matched!");
+                if let Some(output) = &result.output {
+                    println!("{}", output);
+                }
+            } else {
+                println!("✗ Timeout - pattern not found");
+            }
+        }
+
+        Command::Subscribe {
+            session,
+            since,
+            follow,
+        } => {
+            let mut last_ts = since.unwrap_or(0);
+
+            loop {
+                let events = client.subscribe(&session, Some(last_ts))?;
+
+                for event in &events {
+                    if let Some(ts) = event.ts {
+                        last_ts = last_ts.max(ts);
+                    }
+                    if let Some(text) = &event.text {
+                        println!("{}", text);
+                    }
+                }
+
+                if !follow {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
     }
 
     Ok(())

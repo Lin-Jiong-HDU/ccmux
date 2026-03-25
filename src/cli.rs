@@ -83,4 +83,27 @@ pub enum Command {
 
     /// Stop the daemon
     Stop,
+
+    /// Wait for a pattern in session output
+    Wait {
+        /// Session name
+        session: String,
+        /// Pattern to wait for (regex)
+        pattern: String,
+        /// Timeout in seconds
+        #[arg(short, long, default_value = "60")]
+        timeout: u64,
+    },
+
+    /// Subscribe to session output stream
+    Subscribe {
+        /// Session name
+        session: String,
+        /// Only get output after this timestamp
+        #[arg(long)]
+        since: Option<u64>,
+        /// Follow mode (poll continuously)
+        #[arg(short, long)]
+        follow: bool,
+    },
 }
