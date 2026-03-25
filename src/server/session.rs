@@ -5,9 +5,55 @@ use crate::server::{Pty, PtySize};
 use crate::state::SessionState;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
+
+/// Timestamped output chunk (stores PTY read() result, not individual lines)
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub(crate) struct TimestampedOutput {
+    pub(crate) ts: u64,  // Unix timestamp (milliseconds)
+    pub(crate) text: String,
+}
+
+/// Output buffer storing the last N output chunks
+#[derive(Debug, Clone)]
+pub(crate) struct OutputBuffer {
+    buffer: VecDeque<TimestampedOutput>,
+    max_lines: usize,
+}
+
+impl OutputBuffer {
+    pub(crate) fn new(max_lines: usize) -> Self {
+        Self {
+            buffer: VecDeque::with_capacity(max_lines),
+            max_lines,
+        }
+    }
+
+    pub(crate) fn push(&mut self, text: String) {
+        let ts = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        if self.buffer.len() >= self.max_lines {
+            self.buffer.pop_front();
+        }
+        self.buffer.push_back(TimestampedOutput { ts, text });
+    }
+
+    pub(crate) fn since(&self, ts: u64) -> Vec<&TimestampedOutput> {
+        self.buffer.iter().filter(|o| o.ts > ts).collect()
+    }
+
+    pub(crate) fn find_pattern(&self, pattern: &str) -> Option<&TimestampedOutput> {
+        let re = regex::Regex::new(pattern).ok()?;
+        self.buffer.iter().rev().find(|o| re.is_match(&o.text))
+    }
+}
 
 /// Session handle for external reference
 #[derive(Debug, Clone)]
@@ -43,6 +89,7 @@ pub struct Session {
     event_tx: mpsc::UnboundedSender<SessionEvent>,
     log_path: PathBuf,
     last_output: String,
+    output_buffer: OutputBuffer,
 }
 
 impl Session {
@@ -67,6 +114,7 @@ impl Session {
             event_tx,
             log_path,
             last_output: String::new(),
+            output_buffer: OutputBuffer::new(1000),  // Store last 1000 output chunks
         })
     }
 
@@ -99,6 +147,11 @@ impl Session {
                 Ok(n) if n > 0 => {
                     let output = String::from_utf8_lossy(&buf[..n]).to_string();
                     self.last_output = output.clone();
+
+                    // Add to output buffer
+                    if !output.is_empty() {
+                        self.output_buffer.push(output.clone());
+                    }
 
                     // Write to log file
                     if let Err(e) = self.append_log(&output) {
@@ -252,5 +305,10 @@ impl Session {
     /// Get the session name
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Get the output buffer (pub for daemon access within crate)
+    pub(crate) fn output_buffer(&self) -> &OutputBuffer {
+        &self.output_buffer
     }
 }

@@ -1,7 +1,7 @@
 //! Unix socket daemon
 
 use crate::config::Config;
-use crate::protocol::{Request, Response};
+use crate::protocol::{Request, Response, StreamEvent, WaitResult};
 use crate::server::{Session, SessionEvent};
 use crate::state::State;
 use anyhow::{Context, Result};
@@ -439,6 +439,63 @@ impl Daemon {
             Request::StopDaemon => {
                 // Signal shutdown
                 Ok(Response::success(serde_json::json!({"stopping": true})))
+            }
+
+            Request::Subscribe { session, since } => {
+                debug!("Subscribing to session: {}", session);
+                if let Some(s) = self.sessions.get_mut(&session) {
+                    // Pull fresh output from PTY before returning buffer contents
+                    let _ = s.read_output();
+
+                    let events: Vec<StreamEvent> = s.output_buffer()
+                        .since(since.unwrap_or(0))
+                        .iter()
+                        .map(|o| StreamEvent {
+                            event_type: "output".to_string(),
+                            ts: Some(o.ts),
+                            text: Some(o.text.clone()),
+                            status: None,
+                            reason: None,
+                        })
+                        .collect();
+
+                    Ok(Response::success(serde_json::to_value(events)?))
+                } else {
+                    warn!("Session not found: {}", session);
+                    Ok(Response::error(format!("Session '{}' not found", session)))
+                }
+            }
+
+            Request::Wait { session, pattern } => {
+                debug!("Waiting for pattern '{}' in session: {}", pattern, session);
+
+                if let Some(s) = self.sessions.get_mut(&session) {
+                    // Pull fresh output from PTY before searching buffer
+                    let _ = s.read_output();
+
+                    // Search for pattern in output buffer
+                    match s.output_buffer().find_pattern(&pattern) {
+                        Some(output) => {
+                            Ok(Response::success(serde_json::to_value(WaitResult {
+                                matched: true,
+                                pattern: Some(pattern.clone()),
+                                output: Some(output.text.clone()),
+                                timestamp: Some(output.ts),
+                            })?))
+                        }
+                        None => {
+                            Ok(Response::success(serde_json::to_value(WaitResult {
+                                matched: false,
+                                pattern: Some(pattern),
+                                output: None,
+                                timestamp: None,
+                            })?))
+                        }
+                    }
+                } else {
+                    warn!("Session not found: {}", session);
+                    Ok(Response::error(format!("Session '{}' not found", session)))
+                }
             }
         }
     }
