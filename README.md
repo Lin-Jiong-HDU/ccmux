@@ -44,6 +44,35 @@ ccmux send backend "continue"
 ccmux kill backend
 ```
 
+### Programmatic Control (for Claude Code)
+
+```bash
+# Subscribe to session output
+ccmux subscribe <session>
+ccmux subscribe <session> --follow  # Continuous polling
+ccmux subscribe <session> --since 1234567890  # Only output after timestamp
+
+# Wait for specific output pattern
+ccmux wait <session> "pattern"
+ccmux wait <session> "完成|错误" --timeout 120
+```
+
+### Example: Claude Code controlling Claude Code
+
+```bash
+# Create a worker session
+ccmux new -n worker
+
+# Send a task to the worker
+ccmux send worker "请帮我实现用户认证功能"
+
+# Wait for completion or error (with 5 minute timeout)
+ccmux wait worker "完成|错误|error|done" --timeout 300
+
+# Or continuously monitor output
+ccmux subscribe worker --follow
+```
+
 ## Strategies
 
 ccmux supports three strategies:
