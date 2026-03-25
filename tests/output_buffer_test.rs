@@ -1,5 +1,35 @@
-// Note: OutputBuffer is not public, so we test via Session
-// These tests verify the protocol and client methods
+// Tests for JSON serialization of protocol types used by subscribe/wait commands.
+// These tests ensure StreamEvent and WaitResult are serialized as expected.
+
+#[test]
+fn test_subscribe_request_serialization() {
+    use ccmux::protocol::Request;
+
+    let req = Request::Subscribe {
+        session: "backend".to_string(),
+        since: Some(1732560000000),
+    };
+
+    let json = serde_json::to_string(&req).unwrap();
+    assert!(json.contains("subscribe"));
+    assert!(json.contains("backend"));
+    assert!(json.contains("1732560000000"));
+}
+
+#[test]
+fn test_wait_request_serialization() {
+    use ccmux::protocol::Request;
+
+    let req = Request::Wait {
+        session: "worker".to_string(),
+        pattern: "error|done".to_string(),
+    };
+
+    let json = serde_json::to_string(&req).unwrap();
+    assert!(json.contains("wait"));
+    assert!(json.contains("worker"));
+    assert!(json.contains("error|done"));
+}
 
 #[test]
 fn test_stream_event_serialization() {

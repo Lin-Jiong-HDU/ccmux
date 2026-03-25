@@ -443,7 +443,10 @@ impl Daemon {
 
             Request::Subscribe { session, since } => {
                 debug!("Subscribing to session: {}", session);
-                if let Some(s) = self.sessions.get(&session) {
+                if let Some(s) = self.sessions.get_mut(&session) {
+                    // Pull fresh output from PTY before returning buffer contents
+                    let _ = s.read_output();
+
                     let events: Vec<StreamEvent> = s.output_buffer()
                         .since(since.unwrap_or(0))
                         .iter()
@@ -463,11 +466,14 @@ impl Daemon {
                 }
             }
 
-            Request::Wait { session, pattern, timeout: _ } => {
+            Request::Wait { session, pattern } => {
                 debug!("Waiting for pattern '{}' in session: {}", pattern, session);
 
-                if let Some(s) = self.sessions.get(&session) {
-                    // 在输出缓冲区中搜索模式
+                if let Some(s) = self.sessions.get_mut(&session) {
+                    // Pull fresh output from PTY before searching buffer
+                    let _ = s.read_output();
+
+                    // Search for pattern in output buffer
                     match s.output_buffer().find_pattern(&pattern) {
                         Some(output) => {
                             Ok(Response::success(serde_json::to_value(WaitResult {
@@ -478,7 +484,6 @@ impl Daemon {
                             })?))
                         }
                         None => {
-                            // 没有找到匹配
                             Ok(Response::success(serde_json::to_value(WaitResult {
                                 matched: false,
                                 pattern: Some(pattern),

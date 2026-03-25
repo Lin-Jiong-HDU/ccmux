@@ -166,12 +166,11 @@ impl Client {
         }
     }
 
-    /// Wait for a pattern in session output
-    pub fn wait(&self, session: &str, pattern: &str, timeout: Option<u64>) -> Result<WaitResult> {
+    /// Wait for a pattern in session output (checks current buffer only)
+    pub fn wait(&self, session: &str, pattern: &str) -> Result<WaitResult> {
         let response = self.send_request(Request::Wait {
             session: session.to_string(),
             pattern: pattern.to_string(),
-            timeout,
         })?;
 
         if response.success {
@@ -182,12 +181,13 @@ impl Client {
     }
 
     /// Wait with polling (for patterns not yet in buffer)
+    /// Polls every 100ms until timeout_ms elapsed
     pub fn wait_with_poll(&self, session: &str, pattern: &str, timeout_ms: u64) -> Result<WaitResult> {
         let start = std::time::Instant::now();
         let poll_interval = 100; // ms
 
         loop {
-            let result = self.wait(session, pattern, None)?;
+            let result = self.wait(session, pattern)?;
 
             if result.matched {
                 return Ok(result);

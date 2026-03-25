@@ -99,8 +99,8 @@ pub enum Command {
     Subscribe {
         /// Session name
         session: String,
-        /// Only get output after this timestamp
-        #[arg(long)]
+        /// Only get output after this Unix epoch timestamp (milliseconds)
+        #[arg(long, value_name = "MILLIS")]
         since: Option<u64>,
         /// Follow mode (poll continuously)
         #[arg(short, long)]

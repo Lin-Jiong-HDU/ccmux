@@ -46,8 +46,6 @@ pub enum Request {
     Wait {
         session: String,
         pattern: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        timeout: Option<u64>,
     },
 }
 
@@ -131,7 +129,7 @@ pub struct SessionStatusDetail {
     pub last_lines: Vec<String>,
 }
 
-/// 流式事件 (用于 subscribe)
+/// Stream event for subscribe command
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamEvent {
     #[serde(rename = "type")]
@@ -146,7 +144,7 @@ pub struct StreamEvent {
     pub reason: Option<String>,
 }
 
-/// Wait 响应
+/// Wait command result
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WaitResult {
     pub matched: bool,

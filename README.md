@@ -50,7 +50,7 @@ ccmux kill backend
 # Subscribe to session output
 ccmux subscribe <session>
 ccmux subscribe <session> --follow  # Continuous polling
-ccmux subscribe <session> --since 1234567890  # Only output after timestamp
+ccmux subscribe <session> --since 1732560000000  # Only output after Unix epoch timestamp (milliseconds)
 
 # Wait for specific output pattern
 ccmux wait <session> "pattern"
