@@ -138,7 +138,12 @@ impl Drop for Pty {
     fn drop(&mut self) {
         // Send SIGHUP to child process
         let _ = nix::sys::signal::kill(self.child_pid, nix::sys::signal::Signal::SIGHUP);
-        // Wait for child to exit
-        let _ = nix::sys::wait::waitpid(self.child_pid, None);
+        // Use WNOHANG to avoid blocking the async runtime
+        // If child hasn't exited, it will become a zombie temporarily
+        // but won't block the daemon
+        let _ = nix::sys::wait::waitpid(
+            self.child_pid,
+            Some(nix::sys::wait::WaitPidFlag::WNOHANG),
+        );
     }
 }
