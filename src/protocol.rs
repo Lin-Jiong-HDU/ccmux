@@ -155,3 +155,67 @@ pub struct WaitResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timestamp: Option<u64>,
 }
+
+/// Control key for interactive input
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Key {
+    #[serde(rename = "up")]
+    Up,
+    #[serde(rename = "down")]
+    Down,
+    #[serde(rename = "left")]
+    Left,
+    #[serde(rename = "right")]
+    Right,
+    #[serde(rename = "enter")]
+    Enter,
+    #[serde(rename = "esc")]
+    Esc,
+    #[serde(rename = "tab")]
+    Tab,
+    #[serde(rename = "backspace")]
+    Backspace,
+    #[serde(rename = "ctrl_c")]
+    CtrlC,
+    #[serde(rename = "ctrl_d")]
+    CtrlD,
+    #[serde(rename = "ctrl_l")]
+    CtrlL,
+}
+
+impl Key {
+    /// Convert key to raw bytes for PTY input
+    pub fn to_bytes(&self) -> &'static [u8] {
+        match self {
+            Key::Up => b"\x1b[A",
+            Key::Down => b"\x1b[B",
+            Key::Left => b"\x1b[D",
+            Key::Right => b"\x1b[C",
+            Key::Enter => b"\r",
+            Key::Esc => b"\x1b",
+            Key::Tab => b"\t",
+            Key::Backspace => b"\x7f",
+            Key::CtrlC => b"\x03",
+            Key::CtrlD => b"\x04",
+            Key::CtrlL => b"\x0c",
+        }
+    }
+}
+
+impl std::fmt::Display for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Key::Up => write!(f, "up"),
+            Key::Down => write!(f, "down"),
+            Key::Left => write!(f, "left"),
+            Key::Right => write!(f, "right"),
+            Key::Enter => write!(f, "enter"),
+            Key::Esc => write!(f, "esc"),
+            Key::Tab => write!(f, "tab"),
+            Key::Backspace => write!(f, "backspace"),
+            Key::CtrlC => write!(f, "ctrl_c"),
+            Key::CtrlD => write!(f, "ctrl_d"),
+            Key::CtrlL => write!(f, "ctrl_l"),
+        }
+    }
+}
