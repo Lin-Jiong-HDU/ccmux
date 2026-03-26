@@ -84,3 +84,24 @@ fn test_screen_content_serialize() {
     assert_eq!(parsed.cursor_row, 5);
     assert_eq!(parsed.cursor_col, 10);
 }
+
+#[test]
+fn test_send_key_request_serialize() {
+    let req = Request::SendKey {
+        session: "test".to_string(),
+        key: Key::Down,
+    };
+    let json = serde_json::to_string(&req).unwrap();
+    assert!(json.contains(r#""send_key""#));
+    assert!(json.contains(r#""session":"test""#));
+    assert!(json.contains(r#""key":"down""#));
+}
+
+#[test]
+fn test_get_screen_request_serialize() {
+    let req = Request::GetScreen {
+        session: "test".to_string(),
+    };
+    let json = serde_json::to_string(&req).unwrap();
+    assert!(json.contains(r#""get_screen""#));
+}

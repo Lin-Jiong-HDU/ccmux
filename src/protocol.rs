@@ -47,6 +47,15 @@ pub enum Request {
         session: String,
         pattern: String,
     },
+    #[serde(rename = "send_key")]
+    SendKey {
+        session: String,
+        key: Key,
+    },
+    #[serde(rename = "get_screen")]
+    GetScreen {
+        session: String,
+    },
 }
 
 /// Server response
