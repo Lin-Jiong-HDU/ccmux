@@ -1,6 +1,7 @@
 //! PTY spawning and I/O handling
 
 use anyhow::Result;
+use nix::fcntl::{fcntl, FcntlArg, OFlag};
 use nix::pty::{forkpty, Winsize};
 use nix::unistd::Pid;
 use std::ffi::CString;
@@ -72,6 +73,11 @@ impl Pty {
 
         match result {
             nix::pty::ForkptyResult::Parent { child, master } => {
+                // Set master FD to non-blocking mode to avoid blocking the async runtime
+                let fd = master.as_raw_fd();
+                let flags = fcntl(fd, FcntlArg::F_GETFL)?;
+                fcntl(fd, FcntlArg::F_SETFL(OFlag::from_bits_truncate(flags) | OFlag::O_NONBLOCK))?;
+
                 // Convert OwnedFd to File
                 let master_file = File::from(master);
                 Ok(Self {
@@ -110,10 +116,16 @@ impl Pty {
         Ok(n)
     }
 
-    /// Read from the PTY master (reads from child stdout)
+    /// Read from the PTY master (non-blocking, returns 0 if no data available)
     pub fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        let n = self.master.read(buf)?;
-        Ok(n)
+        match self.master.read(buf) {
+            Ok(n) => Ok(n),
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                // No data available in non-blocking mode
+                Ok(0)
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// Set PTY window size

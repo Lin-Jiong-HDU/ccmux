@@ -130,10 +130,11 @@ impl Session {
         Ok(())
     }
 
-    /// Send input to the session
+    /// Send input to the session (appends newline to submit)
     pub fn send(&mut self, text: &str) -> Result<()> {
         if let Some(pty) = &mut self.pty {
             pty.write(text.as_bytes())?;
+            pty.write(b"\n")?; // Send newline to submit input
         }
         Ok(())
     }
