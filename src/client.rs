@@ -1,6 +1,6 @@
 //! Client for communicating with daemon
 
-use crate::protocol::{Request, Response, SessionInfo, SessionStatusDetail, StreamEvent, WaitResult};
+use crate::protocol::{Request, Response, SessionInfo, SessionStatusDetail, StreamEvent, WaitResult, Key, ScreenContent};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use tracing::debug;
@@ -123,6 +123,26 @@ impl Client {
         let response = self.send_request(Request::Send { session, text })?;
         if response.success {
             Ok(())
+        } else {
+            anyhow::bail!("{}", response.error.unwrap_or_default())
+        }
+    }
+
+    /// Send control key to a session
+    pub fn send_key(&self, session: String, key: Key) -> Result<()> {
+        let response = self.send_request(Request::SendKey { session, key })?;
+        if response.success {
+            Ok(())
+        } else {
+            anyhow::bail!("{}", response.error.unwrap_or_default())
+        }
+    }
+
+    /// Get session screen content
+    pub fn get_screen(&self, session: String) -> Result<ScreenContent> {
+        let response = self.send_request(Request::GetScreen { session })?;
+        if response.success {
+            Ok(serde_json::from_value(response.data.unwrap_or_default())?)
         } else {
             anyhow::bail!("{}", response.error.unwrap_or_default())
         }
