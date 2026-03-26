@@ -19,7 +19,7 @@ pub struct InteractionDetector {
 
 // ANSI escape sequences for reverse video (menu highlighting)
 static REVERSE_VIDEO: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\x1b\[[7m]").expect("Failed to compile reverse video regex"));
+    Lazy::new(|| Regex::new(r"\x1b\[7m").expect("Failed to compile reverse video regex"));
 
 // Editor signatures
 static VIM_PATTERN: Lazy<Regex> =
@@ -42,7 +42,7 @@ static PYTHON_REPL: Lazy<Regex> = Lazy::new(|| {
 });
 
 static NODE_REPL: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"> ").expect("Failed to compile node regex"));
+    Lazy::new(|| Regex::new(r"(?m)^> ").expect("Failed to compile node regex"));
 
 static IPDB_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"ipdb> ").expect("Failed to compile ipdb regex"));
@@ -55,7 +55,7 @@ static RUST_REPL: Lazy<Regex> =
 
 // Menu patterns beyond reverse video
 static MENU_OPTIONS: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^\s*\d+\.\s+[A-Z]|\s*\[.\]\s+\w+").expect("Failed to compile menu options regex")
+    Regex::new(r"(?m)^\s*\d+\.\s+[A-Z]|\s*\[.\]\s+\w+").expect("Failed to compile menu options regex")
 });
 
 impl Default for InteractionDetector {

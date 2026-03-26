@@ -343,8 +343,8 @@ impl ScreenBuffer {
 
     /// Resize the screen buffer
     pub fn resize(&mut self, cols: u16, rows: u16) {
-        let new_cols = cols as usize;
-        let new_rows = rows as usize;
+        let new_cols = cols.max(1) as usize;
+        let new_rows = rows.max(1) as usize;
 
         // Adjust rows
         if new_rows > self.rows {
