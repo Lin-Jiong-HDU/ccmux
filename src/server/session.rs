@@ -1,7 +1,7 @@
 //! Session lifecycle management
 
-use crate::protocol::{SessionInfo, SessionStatus, SessionStatusDetail};
-use crate::server::{Pty, PtySize};
+use crate::protocol::{ScreenContent, SessionInfo, SessionStatus, SessionStatusDetail};
+use crate::server::{Pty, PtySize, ScreenBuffer};
 use crate::state::SessionState;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -90,6 +90,7 @@ pub struct Session {
     log_path: PathBuf,
     last_output: String,
     output_buffer: OutputBuffer,
+    screen_buffer: ScreenBuffer,
 }
 
 impl Session {
@@ -115,6 +116,7 @@ impl Session {
             log_path,
             last_output: String::new(),
             output_buffer: OutputBuffer::new(1000),  // Store last 1000 output chunks
+            screen_buffer: ScreenBuffer::new(80, 24),  // Default size
         })
     }
 
@@ -311,5 +313,44 @@ impl Session {
     /// Get the output buffer (pub for daemon access within crate)
     pub(crate) fn output_buffer(&self) -> &OutputBuffer {
         &self.output_buffer
+    }
+
+    /// Send a key to the session
+    pub fn send_key(&mut self, key: crate::protocol::Key) -> Result<()> {
+        use crate::protocol::Key;
+        match key {
+            Key::Enter => self.send("\r"),
+            Key::Tab => self.send("\t"),
+            Key::Esc => self.send("\x1b"),
+            Key::Backspace => self.send("\x7f"),
+            Key::Up => self.send("\x1b[A"),
+            Key::Down => self.send("\x1b[B"),
+            Key::Left => self.send("\x1b[D"),
+            Key::Right => self.send("\x1b[C"),
+            Key::CtrlC => self.send("\x03"),
+            Key::CtrlD => self.send("\x04"),
+            Key::CtrlL => self.send("\x0c"),
+            Key::Char(c) => self.send(&c.to_string()),
+        }
+    }
+
+    /// Get the current screen content
+    pub fn get_screen_content(&mut self) -> Result<ScreenContent> {
+        // First, read any pending output to update the screen buffer
+        let _ = self.read_output();
+
+        // Process the output through the screen buffer
+        if let Some(pty) = &mut self.pty {
+            let mut buf = [0u8; 8192];
+            match pty.read(&mut buf) {
+                Ok(n) if n > 0 => {
+                    let output = String::from_utf8_lossy(&buf[..n]).to_string();
+                    self.screen_buffer.process_output(output.as_bytes())?;
+                }
+                Ok(_) | Err(_) => {}
+            }
+        }
+
+        Ok(self.screen_buffer.get_content())
     }
 }

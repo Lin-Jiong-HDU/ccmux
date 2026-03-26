@@ -61,6 +61,10 @@ pub struct ScreenBuffer {
 impl ScreenBuffer {
     /// Create a new screen buffer with the given dimensions
     pub fn new(cols: u16, rows: u16) -> Self {
+        // Ensure minimum dimensions to prevent panics
+        let cols = cols.max(1);
+        let rows = rows.max(1);
+
         let cols = cols as usize;
         let rows = rows as usize;
 

@@ -190,23 +190,26 @@ pub enum Key {
     CtrlD,
     #[serde(rename = "ctrl_l")]
     CtrlL,
+    #[serde(rename = "char")]
+    Char(char),
 }
 
 impl Key {
     /// Convert key to raw bytes for PTY input
-    pub fn to_bytes(&self) -> &'static [u8] {
+    pub fn to_bytes(&self) -> Vec<u8> {
         match self {
-            Key::Up => b"\x1b[A",
-            Key::Down => b"\x1b[B",
-            Key::Left => b"\x1b[D",
-            Key::Right => b"\x1b[C",
-            Key::Enter => b"\r",
-            Key::Esc => b"\x1b",
-            Key::Tab => b"\t",
-            Key::Backspace => b"\x7f",
-            Key::CtrlC => b"\x03",
-            Key::CtrlD => b"\x04",
-            Key::CtrlL => b"\x0c",
+            Key::Up => b"\x1b[A".to_vec(),
+            Key::Down => b"\x1b[B".to_vec(),
+            Key::Left => b"\x1b[D".to_vec(),
+            Key::Right => b"\x1b[C".to_vec(),
+            Key::Enter => b"\r".to_vec(),
+            Key::Esc => b"\x1b".to_vec(),
+            Key::Tab => b"\t".to_vec(),
+            Key::Backspace => b"\x7f".to_vec(),
+            Key::CtrlC => b"\x03".to_vec(),
+            Key::CtrlD => b"\x04".to_vec(),
+            Key::CtrlL => b"\x0c".to_vec(),
+            Key::Char(c) => c.to_string().into_bytes(),
         }
     }
 }
@@ -225,6 +228,7 @@ impl std::fmt::Display for Key {
             Key::CtrlC => write!(f, "ctrl_c"),
             Key::CtrlD => write!(f, "ctrl_d"),
             Key::CtrlL => write!(f, "ctrl_l"),
+            Key::Char(c) => write!(f, "char_{}", c),
         }
     }
 }
