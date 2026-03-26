@@ -19,3 +19,4 @@ tmp/
 # Backup files
 **/*.rs.bk
 *.pdb
+.worktrees/
