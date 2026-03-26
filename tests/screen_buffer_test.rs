@@ -1,5 +1,5 @@
-use ccmux::server::ScreenBuffer;
 use ccmux::protocol::InteractionMode;
+use ccmux::server::ScreenBuffer;
 
 #[test]
 fn test_screen_buffer_new() {

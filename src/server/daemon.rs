@@ -97,8 +97,8 @@ impl Daemon {
         // Try to create lockfile atomically
         let lock_file = OpenOptions::new()
             .write(true)
-            .create_new(true)  // Atomic - fails if file exists
-            .mode(0o600)       // Restrictive permissions
+            .create_new(true) // Atomic - fails if file exists
+            .mode(0o600) // Restrictive permissions
             .open(&lock_path);
 
         let mut lock_file = match lock_file {
@@ -141,8 +141,7 @@ impl Daemon {
         };
 
         // Write our PID to the lockfile
-        write!(lock_file, "{}", std::process::id())
-            .context("Failed to write PID to lockfile")?;
+        write!(lock_file, "{}", std::process::id()).context("Failed to write PID to lockfile")?;
         lock_file.flush().context("Failed to flush lockfile")?;
 
         // Ensure lockfile is removed on drop
@@ -302,10 +301,10 @@ impl Daemon {
                 } else {
                     debug!("Getting status for all sessions");
                     // When no session specified, return list of status details
-                    let details: Vec<_> = self.sessions.values().map(|s| s.status_detail()).collect();
+                    let details: Vec<_> =
+                        self.sessions.values().map(|s| s.status_detail()).collect();
                     Ok(Response::success(
-                        serde_json::to_value(details)
-                            .context("Failed to serialize status list")?,
+                        serde_json::to_value(details).context("Failed to serialize status list")?,
                     ))
                 }
             }
@@ -324,17 +323,22 @@ impl Daemon {
                 let log_path = State::log_path(&name)
                     .with_context(|| format!("Failed to get log path for session {}", name))?;
 
-                let session =
-                    Session::new(name.clone(), cwd.clone(), strategy, self.event_tx.clone(), log_path)
-                        .with_context(|| format!("Failed to create session {}", name))?;
+                let session = Session::new(
+                    name.clone(),
+                    cwd.clone(),
+                    strategy,
+                    self.event_tx.clone(),
+                    log_path,
+                )
+                .with_context(|| format!("Failed to create session {}", name))?;
 
                 // Add to state BEFORE starting so event handlers can find it
                 self.state.add_session(session.to_state());
                 self.sessions.insert(name.clone(), session);
 
                 // Now start the session (this sends events that need state to exist)
-                let claude_path = which::which("claude")
-                    .unwrap_or_else(|_| PathBuf::from("claude"));
+                let claude_path =
+                    which::which("claude").unwrap_or_else(|_| PathBuf::from("claude"));
 
                 let mut cmd = std::process::Command::new(&claude_path);
                 cmd.current_dir(&cwd);
@@ -447,7 +451,8 @@ impl Daemon {
                     // Pull fresh output from PTY before returning buffer contents
                     let _ = s.read_output();
 
-                    let events: Vec<StreamEvent> = s.output_buffer()
+                    let events: Vec<StreamEvent> = s
+                        .output_buffer()
                         .since(since.unwrap_or(0))
                         .iter()
                         .map(|o| StreamEvent {
@@ -475,22 +480,18 @@ impl Daemon {
 
                     // Search for pattern in output buffer
                     match s.output_buffer().find_pattern(&pattern) {
-                        Some(output) => {
-                            Ok(Response::success(serde_json::to_value(WaitResult {
-                                matched: true,
-                                pattern: Some(pattern.clone()),
-                                output: Some(output.text.clone()),
-                                timestamp: Some(output.ts),
-                            })?))
-                        }
-                        None => {
-                            Ok(Response::success(serde_json::to_value(WaitResult {
-                                matched: false,
-                                pattern: Some(pattern),
-                                output: None,
-                                timestamp: None,
-                            })?))
-                        }
+                        Some(output) => Ok(Response::success(serde_json::to_value(WaitResult {
+                            matched: true,
+                            pattern: Some(pattern.clone()),
+                            output: Some(output.text.clone()),
+                            timestamp: Some(output.ts),
+                        })?)),
+                        None => Ok(Response::success(serde_json::to_value(WaitResult {
+                            matched: false,
+                            pattern: Some(pattern),
+                            output: None,
+                            timestamp: None,
+                        })?)),
                     }
                 } else {
                     warn!("Session not found: {}", session);

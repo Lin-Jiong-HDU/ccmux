@@ -128,8 +128,15 @@ fn main() -> Result<()> {
             println!("(Stop not yet implemented)");
         }
 
-        Command::Wait { session, pattern, timeout } => {
-            println!("Waiting for pattern '{}' (timeout: {}s)...", pattern, timeout);
+        Command::Wait {
+            session,
+            pattern,
+            timeout,
+        } => {
+            println!(
+                "Waiting for pattern '{}' (timeout: {}s)...",
+                pattern, timeout
+            );
 
             let result = client.wait_with_poll(&session, &pattern, timeout * 1000)?;
 

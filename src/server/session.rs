@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 /// Timestamped output chunk (stores PTY read() result, not individual lines)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TimestampedOutput {
-    pub(crate) ts: u64,  // Unix timestamp (milliseconds)
+    pub(crate) ts: u64, // Unix timestamp (milliseconds)
     pub(crate) text: String,
 }
 
@@ -120,7 +120,7 @@ impl Session {
             event_tx,
             log_path,
             last_output: String::new(),
-            output_buffer: OutputBuffer::new(1000),  // Store last 1000 output chunks
+            output_buffer: OutputBuffer::new(1000), // Store last 1000 output chunks
             screen_buffer,
             mode_detector,
         })
@@ -132,7 +132,7 @@ impl Session {
         self.pty = Some(pty);
         self.status = SessionStatus::Running;
         let _ = self.event_tx.send(SessionEvent::StatusChanged {
-            session: self.name.clone(),  // Use name for daemon lookup
+            session: self.name.clone(), // Use name for daemon lookup
             status: SessionStatus::Running,
         });
         Ok(())
@@ -162,7 +162,9 @@ impl Session {
                     }
 
                     // Update interaction mode
-                    let new_mode = self.mode_detector.detect(&output, self.screen_buffer.detect_mode());
+                    let new_mode = self
+                        .mode_detector
+                        .detect(&output, self.screen_buffer.detect_mode());
                     self.screen_buffer.set_mode(new_mode);
 
                     self.last_output = output.clone();
@@ -179,7 +181,7 @@ impl Session {
 
                     // Notify about output
                     let _ = self.event_tx.send(SessionEvent::Output {
-                        session: self.name.clone(),  // Use name for daemon lookup
+                        session: self.name.clone(), // Use name for daemon lookup
                         output: output.clone(),
                     });
 
@@ -217,7 +219,7 @@ impl Session {
         if self.status == SessionStatus::Running {
             self.status = SessionStatus::Paused;
             let _ = self.event_tx.send(SessionEvent::StatusChanged {
-                session: self.name.clone(),  // Use name for daemon lookup
+                session: self.name.clone(), // Use name for daemon lookup
                 status: SessionStatus::Paused,
             });
         }
@@ -229,7 +231,7 @@ impl Session {
         if self.status == SessionStatus::Paused {
             self.status = SessionStatus::Running;
             let _ = self.event_tx.send(SessionEvent::StatusChanged {
-                session: self.name.clone(),  // Use name for daemon lookup
+                session: self.name.clone(), // Use name for daemon lookup
                 status: SessionStatus::Running,
             });
         }
@@ -241,11 +243,11 @@ impl Session {
         self.pty = None; // Drop PTY, which sends SIGHUP
         self.status = SessionStatus::Stopped;
         let _ = self.event_tx.send(SessionEvent::StatusChanged {
-            session: self.name.clone(),  // Use name for daemon lookup
+            session: self.name.clone(), // Use name for daemon lookup
             status: SessionStatus::Stopped,
         });
         let _ = self.event_tx.send(SessionEvent::Terminated {
-            session: self.name.clone(),  // Use name for daemon lookup
+            session: self.name.clone(), // Use name for daemon lookup
         });
         Ok(())
     }

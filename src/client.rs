@@ -1,6 +1,9 @@
 //! Client for communicating with daemon
 
-use crate::protocol::{Request, Response, SessionInfo, SessionStatusDetail, StreamEvent, WaitResult, Key, ScreenContent};
+use crate::protocol::{
+    Key, Request, Response, ScreenContent, SessionInfo, SessionStatusDetail, StreamEvent,
+    WaitResult,
+};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use tracing::debug;
@@ -202,7 +205,12 @@ impl Client {
 
     /// Wait with polling (for patterns not yet in buffer)
     /// Polls every 100ms until timeout_ms elapsed
-    pub fn wait_with_poll(&self, session: &str, pattern: &str, timeout_ms: u64) -> Result<WaitResult> {
+    pub fn wait_with_poll(
+        &self,
+        session: &str,
+        pattern: &str,
+        timeout_ms: u64,
+    ) -> Result<WaitResult> {
         let start = std::time::Instant::now();
         let poll_interval = 100; // ms
 

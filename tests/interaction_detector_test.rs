@@ -1,5 +1,5 @@
-use ccmux::server::InteractionDetector;
 use ccmux::protocol::InteractionMode;
+use ccmux::server::InteractionDetector;
 
 #[test]
 fn test_detect_normal_mode() {

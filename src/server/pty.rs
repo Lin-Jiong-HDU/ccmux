@@ -58,8 +58,16 @@ impl Pty {
     pub fn spawn(cmd: Command) -> Result<Self> {
         // Extract cwd and env before spawning
         let cwd = cmd.get_current_dir().map(|p| p.to_path_buf());
-        let env: Vec<_> = cmd.get_envs()
-            .filter_map(|(k, v)| v.map(|v| (k.to_string_lossy().into_owned(), v.to_string_lossy().into_owned())))
+        let env: Vec<_> = cmd
+            .get_envs()
+            .filter_map(|(k, v)| {
+                v.map(|v| {
+                    (
+                        k.to_string_lossy().into_owned(),
+                        v.to_string_lossy().into_owned(),
+                    )
+                })
+            })
             .collect();
 
         let winsize = Some(Winsize {
@@ -76,7 +84,10 @@ impl Pty {
                 // Set master FD to non-blocking mode to avoid blocking the async runtime
                 let fd = master.as_raw_fd();
                 let flags = fcntl(fd, FcntlArg::F_GETFL)?;
-                fcntl(fd, FcntlArg::F_SETFL(OFlag::from_bits_truncate(flags) | OFlag::O_NONBLOCK))?;
+                fcntl(
+                    fd,
+                    FcntlArg::F_SETFL(OFlag::from_bits_truncate(flags) | OFlag::O_NONBLOCK),
+                )?;
 
                 // Convert OwnedFd to File
                 let master_file = File::from(master);
@@ -161,9 +172,6 @@ impl Drop for Pty {
         // Use WNOHANG to avoid blocking the async runtime
         // If child hasn't exited, it will become a zombie temporarily
         // but won't block the daemon
-        let _ = nix::sys::wait::waitpid(
-            self.child_pid,
-            Some(nix::sys::wait::WaitPidFlag::WNOHANG),
-        );
+        let _ = nix::sys::wait::waitpid(self.child_pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG));
     }
 }

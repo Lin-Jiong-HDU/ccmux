@@ -232,7 +232,7 @@ impl ScreenBuffer {
     fn parse_csi_2_params(&self, params: &str, default1: usize, default2: usize) -> (usize, usize) {
         let parts: Vec<&str> = params.split(';').collect();
         let p1 = parts
-            .get(0)
+            .first()
             .and_then(|s| s.parse().ok())
             .unwrap_or(default1);
         let p2 = parts

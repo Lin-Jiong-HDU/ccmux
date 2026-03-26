@@ -43,19 +43,11 @@ pub enum Request {
         since: Option<u64>,
     },
     #[serde(rename = "wait")]
-    Wait {
-        session: String,
-        pattern: String,
-    },
+    Wait { session: String, pattern: String },
     #[serde(rename = "send_key")]
-    SendKey {
-        session: String,
-        key: Key,
-    },
+    SendKey { session: String, key: Key },
     #[serde(rename = "get_screen")]
-    GetScreen {
-        session: String,
-    },
+    GetScreen { session: String },
 }
 
 /// Server response

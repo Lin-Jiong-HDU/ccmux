@@ -18,22 +18,18 @@ pub struct InteractionDetector {
 }
 
 // ANSI escape sequences for reverse video (menu highlighting)
-static REVERSE_VIDEO: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\x1b\[[7m]").expect("Failed to compile reverse video regex")
-});
+static REVERSE_VIDEO: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\x1b\[[7m]").expect("Failed to compile reverse video regex"));
 
 // Editor signatures
-static VIM_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new("(?i)VIM.*Vi.*IMproved").expect("Failed to compile vim regex")
-});
+static VIM_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new("(?i)VIM.*Vi.*IMproved").expect("Failed to compile vim regex"));
 
-static NANO_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"GNU nano \d+\.\d+").expect("Failed to compile nano regex")
-});
+static NANO_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"GNU nano \d+\.\d+").expect("Failed to compile nano regex"));
 
-static EMACS_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"GNU Emacs").expect("Failed to compile emacs regex")
-});
+static EMACS_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"GNU Emacs").expect("Failed to compile emacs regex"));
 
 static EDITOR_PATTERN: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"(?i)(main\.py|\.rs|\.go|\.js|\.ts|README|TODO)\s+\d+,\s*\d+")
@@ -45,21 +41,17 @@ static PYTHON_REPL: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r">>> |In \[\d+\]: |   \.\.\. ").expect("Failed to compile python regex")
 });
 
-static NODE_REPL: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"> ").expect("Failed to compile node regex")
-});
+static NODE_REPL: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"> ").expect("Failed to compile node regex"));
 
-static IPDB_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"ipdb> ").expect("Failed to compile ipdb regex")
-});
+static IPDB_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"ipdb> ").expect("Failed to compile ipdb regex"));
 
-static PDB_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\(Pdb\) ").expect("Failed to compile pdb regex")
-});
+static PDB_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\(Pdb\) ").expect("Failed to compile pdb regex"));
 
-static RUST_REPL: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"dbg> ").expect("Failed to compile rust regex")
-});
+static RUST_REPL: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"dbg> ").expect("Failed to compile rust regex"));
 
 // Menu patterns beyond reverse video
 static MENU_OPTIONS: Lazy<Regex> = Lazy::new(|| {

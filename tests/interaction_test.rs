@@ -1,8 +1,8 @@
 //! Integration tests for interactive PTY control
 
-use ccmux::server::ScreenBuffer;
-use ccmux::protocol::Key;
 use ccmux::protocol::InteractionMode;
+use ccmux::protocol::Key;
+use ccmux::server::ScreenBuffer;
 
 #[test]
 fn test_key_parsing() {
@@ -52,7 +52,9 @@ fn test_screen_buffer_integration() {
     let mut buffer = ScreenBuffer::new(80, 24);
 
     // Simulate a menu being displayed
-    buffer.process_output(b"\x1b[7m Option 1 \x1b[0m\r\n").unwrap();
+    buffer
+        .process_output(b"\x1b[7m Option 1 \x1b[0m\r\n")
+        .unwrap();
     buffer.process_output(b"  Option 2\r\n").unwrap();
     buffer.process_output(b"  Option 3\r\n").unwrap();
 
