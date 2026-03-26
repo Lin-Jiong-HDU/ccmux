@@ -54,6 +54,23 @@ pub enum Command {
         text: String,
     },
 
+    /// Send control key to a session
+    SendKey {
+        /// Session name or ID
+        session: String,
+        /// Key to send (up, down, left, right, enter, esc, tab, backspace, ctrl_c, ctrl_d, ctrl_l)
+        key: String,
+    },
+
+    /// Get session screen content
+    Screen {
+        /// Session name or ID
+        session: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
     /// View session output
     Logs {
         /// Session name or ID

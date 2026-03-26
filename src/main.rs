@@ -3,8 +3,26 @@
 use anyhow::Result;
 use ccmux::cli::{Cli, Command};
 use ccmux::client::Client;
+use ccmux::protocol::Key;
 use clap::Parser;
 use strip_ansi::strip_ansi as strip_ansi_escapes;
+
+fn parse_key(s: &str) -> Result<Key> {
+    match s.to_lowercase().as_str() {
+        "up" => Ok(Key::Up),
+        "down" => Ok(Key::Down),
+        "left" => Ok(Key::Left),
+        "right" => Ok(Key::Right),
+        "enter" | "return" => Ok(Key::Enter),
+        "esc" | "escape" => Ok(Key::Esc),
+        "tab" => Ok(Key::Tab),
+        "backspace" => Ok(Key::Backspace),
+        "ctrl_c" | "ctrl-c" => Ok(Key::CtrlC),
+        "ctrl_d" | "ctrl-d" => Ok(Key::CtrlD),
+        "ctrl_l" | "ctrl-l" => Ok(Key::CtrlL),
+        _ => anyhow::bail!("Unknown key: {}", s),
+    }
+}
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -46,6 +64,26 @@ fn main() -> Result<()> {
         Command::Send { session, text } => {
             client.send_input(session, text)?;
             println!("Sent.");
+        }
+
+        Command::SendKey { session, key } => {
+            let key = parse_key(&key)?;
+            client.send_key(session, key)?;
+            println!("Sent key: {}", key);
+        }
+
+        Command::Screen { session, json } => {
+            let screen = client.get_screen(session)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&screen)?);
+            } else {
+                println!("Mode: {}", screen.mode);
+                println!("Cursor: {},{}", screen.cursor_row, screen.cursor_col);
+                println!("--- Screen ---");
+                for line in screen.lines {
+                    println!("{}", line);
+                }
+            }
         }
 
         Command::Logs {
