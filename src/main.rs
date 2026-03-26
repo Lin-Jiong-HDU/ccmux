@@ -4,18 +4,7 @@ use anyhow::Result;
 use ccmux::cli::{Cli, Command};
 use ccmux::client::Client;
 use clap::Parser;
-use once_cell::sync::Lazy;
-use regex::Regex;
-
-/// Regex pattern to match ANSI escape sequences
-static ANSI_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b[()][AB012]|\x1b[=?][0-9;]*[a-zA-Z]").unwrap()
-});
-
-/// Strip ANSI escape sequences from a string
-fn strip_ansi(s: &str) -> String {
-    ANSI_REGEX.replace_all(s, "").into_owned()
-}
+use strip_ansi::strip_ansi as strip_ansi_escapes;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -70,7 +59,7 @@ fn main() -> Result<()> {
             );
             let output = client.get_output(session, Some(tail))?;
             for line in output {
-                println!("  {}", strip_ansi(&line));
+                println!("  {}", strip_ansi_escapes(&line));
             }
         }
 
@@ -109,7 +98,7 @@ fn main() -> Result<()> {
             if result.matched {
                 println!("✓ Matched!");
                 if let Some(output) = &result.output {
-                    println!("{}", strip_ansi(output));
+                    println!("{}", strip_ansi_escapes(output));
                 }
             } else {
                 println!("✗ Timeout - pattern not found");
@@ -131,7 +120,7 @@ fn main() -> Result<()> {
                         last_ts = last_ts.max(ts);
                     }
                     if let Some(text) = &event.text {
-                        println!("{}", strip_ansi(text));
+                        println!("{}", strip_ansi_escapes(text));
                     }
                 }
 
@@ -188,7 +177,7 @@ fn print_status_detail(status: &ccmux::protocol::SessionStatusDetail) {
     if !status.last_lines.is_empty() {
         println!("\nLast {} lines:", status.last_lines.len());
         for line in &status.last_lines {
-            println!("  {}", strip_ansi(line));
+            println!("  {}", strip_ansi_escapes(line));
         }
     }
 }
