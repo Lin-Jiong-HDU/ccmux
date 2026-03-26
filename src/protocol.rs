@@ -219,3 +219,36 @@ impl std::fmt::Display for Key {
         }
     }
 }
+
+/// Interaction mode detected from PTY output
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InteractionMode {
+    #[serde(rename = "normal")]
+    Normal,
+    #[serde(rename = "menu")]
+    Menu,
+    #[serde(rename = "editor")]
+    Editor,
+    #[serde(rename = "repl")]
+    Repl,
+}
+
+impl std::fmt::Display for InteractionMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Normal => write!(f, "normal"),
+            Self::Menu => write!(f, "menu"),
+            Self::Editor => write!(f, "editor"),
+            Self::Repl => write!(f, "repl"),
+        }
+    }
+}
+
+/// Screen content response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScreenContent {
+    pub lines: Vec<String>,
+    pub cursor_row: u16,
+    pub cursor_col: u16,
+    pub mode: InteractionMode,
+}

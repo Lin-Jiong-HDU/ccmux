@@ -1,4 +1,4 @@
-use ccmux::protocol::{Key, Request, Response, SessionStatus};
+use ccmux::protocol::{InteractionMode, Key, Request, Response, ScreenContent, SessionStatus};
 
 #[test]
 fn test_request_serialize_new() {
@@ -54,4 +54,33 @@ fn test_key_to_bytes() {
     assert_eq!(Key::Up.to_bytes(), b"\x1b[A");
     assert_eq!(Key::Down.to_bytes(), b"\x1b[B");
     assert_eq!(Key::CtrlC.to_bytes(), b"\x03");
+}
+
+#[test]
+fn test_interaction_mode_serialize() {
+    let mode = InteractionMode::Menu;
+    let json = serde_json::to_string(&mode).unwrap();
+    assert_eq!(json, r#""menu""#);
+}
+
+#[test]
+fn test_interaction_mode_deserialize() {
+    let json = r#""menu""#;
+    let mode: InteractionMode = serde_json::from_str(json).unwrap();
+    assert_eq!(mode, InteractionMode::Menu);
+}
+
+#[test]
+fn test_screen_content_serialize() {
+    let content = ScreenContent {
+        lines: vec!["hello".to_string(), "world".to_string()],
+        cursor_row: 5,
+        cursor_col: 10,
+        mode: InteractionMode::Normal,
+    };
+    let json = serde_json::to_string(&content).unwrap();
+    let parsed: ScreenContent = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.lines.len(), 2);
+    assert_eq!(parsed.cursor_row, 5);
+    assert_eq!(parsed.cursor_col, 10);
 }
