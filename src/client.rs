@@ -1,6 +1,9 @@
 //! Client for communicating with daemon
 
-use crate::protocol::{Request, Response, SessionInfo, SessionStatusDetail, StreamEvent, WaitResult};
+use crate::protocol::{
+    Key, Request, Response, ScreenContent, SessionInfo, SessionStatusDetail, StreamEvent,
+    WaitResult,
+};
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 use tracing::debug;
@@ -128,6 +131,26 @@ impl Client {
         }
     }
 
+    /// Send control key to a session
+    pub fn send_key(&self, session: String, key: Key) -> Result<()> {
+        let response = self.send_request(Request::SendKey { session, key })?;
+        if response.success {
+            Ok(())
+        } else {
+            anyhow::bail!("{}", response.error.unwrap_or_default())
+        }
+    }
+
+    /// Get session screen content
+    pub fn get_screen(&self, session: String) -> Result<ScreenContent> {
+        let response = self.send_request(Request::GetScreen { session })?;
+        if response.success {
+            Ok(serde_json::from_value(response.data.unwrap_or_default())?)
+        } else {
+            anyhow::bail!("{}", response.error.unwrap_or_default())
+        }
+    }
+
     /// Get session output
     pub fn get_output(&self, session: String, lines: Option<usize>) -> Result<Vec<String>> {
         let response = self.send_request(Request::Output { session, lines })?;
@@ -182,7 +205,12 @@ impl Client {
 
     /// Wait with polling (for patterns not yet in buffer)
     /// Polls every 100ms until timeout_ms elapsed
-    pub fn wait_with_poll(&self, session: &str, pattern: &str, timeout_ms: u64) -> Result<WaitResult> {
+    pub fn wait_with_poll(
+        &self,
+        session: &str,
+        pattern: &str,
+        timeout_ms: u64,
+    ) -> Result<WaitResult> {
         let start = std::time::Instant::now();
         let poll_interval = 100; // ms
 

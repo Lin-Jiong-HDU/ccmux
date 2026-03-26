@@ -50,7 +50,7 @@ fn test_stream_event_serialization() {
 
 #[test]
 fn test_stream_event_with_status() {
-    use ccmux::protocol::{StreamEvent, SessionStatus};
+    use ccmux::protocol::{SessionStatus, StreamEvent};
 
     let event = StreamEvent {
         event_type: "status".to_string(),

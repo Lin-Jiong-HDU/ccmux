@@ -1,9 +1,9 @@
 //! Session lifecycle management
 
-use crate::protocol::{SessionInfo, SessionStatus, SessionStatusDetail};
-use crate::server::{Pty, PtySize};
+use crate::protocol::{Key, ScreenContent, SessionInfo, SessionStatus, SessionStatusDetail};
+use crate::server::{InteractionDetector, Pty, PtySize, ScreenBuffer};
 use crate::state::SessionState;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -14,7 +14,7 @@ use tokio::sync::mpsc;
 /// Timestamped output chunk (stores PTY read() result, not individual lines)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TimestampedOutput {
-    pub(crate) ts: u64,  // Unix timestamp (milliseconds)
+    pub(crate) ts: u64, // Unix timestamp (milliseconds)
     pub(crate) text: String,
 }
 
@@ -90,6 +90,8 @@ pub struct Session {
     log_path: PathBuf,
     last_output: String,
     output_buffer: OutputBuffer,
+    screen_buffer: ScreenBuffer,
+    mode_detector: InteractionDetector,
 }
 
 impl Session {
@@ -103,6 +105,10 @@ impl Session {
     ) -> Result<Self> {
         let id = uuid::Uuid::new_v4().to_string();
 
+        // Initialize screen buffer with default size
+        let screen_buffer = ScreenBuffer::new(80, 24);
+        let mode_detector = InteractionDetector::new();
+
         Ok(Self {
             id: id.clone(),
             name,
@@ -114,7 +120,9 @@ impl Session {
             event_tx,
             log_path,
             last_output: String::new(),
-            output_buffer: OutputBuffer::new(1000),  // Store last 1000 output chunks
+            output_buffer: OutputBuffer::new(1000), // Store last 1000 output chunks
+            screen_buffer,
+            mode_detector,
         })
     }
 
@@ -124,7 +132,7 @@ impl Session {
         self.pty = Some(pty);
         self.status = SessionStatus::Running;
         let _ = self.event_tx.send(SessionEvent::StatusChanged {
-            session: self.name.clone(),  // Use name for daemon lookup
+            session: self.name.clone(), // Use name for daemon lookup
             status: SessionStatus::Running,
         });
         Ok(())
@@ -147,6 +155,18 @@ impl Session {
             match pty.read(&mut buf) {
                 Ok(n) if n > 0 => {
                     let output = String::from_utf8_lossy(&buf[..n]).to_string();
+
+                    // Update screen buffer with new output
+                    if let Err(e) = self.screen_buffer.process_output(&buf[..n]) {
+                        tracing::warn!("Failed to update screen buffer: {}", e);
+                    }
+
+                    // Update interaction mode
+                    let new_mode = self
+                        .mode_detector
+                        .detect(&output, self.screen_buffer.detect_mode());
+                    self.screen_buffer.set_mode(new_mode);
+
                     self.last_output = output.clone();
 
                     // Add to output buffer
@@ -161,7 +181,7 @@ impl Session {
 
                     // Notify about output
                     let _ = self.event_tx.send(SessionEvent::Output {
-                        session: self.name.clone(),  // Use name for daemon lookup
+                        session: self.name.clone(), // Use name for daemon lookup
                         output: output.clone(),
                     });
 
@@ -199,7 +219,7 @@ impl Session {
         if self.status == SessionStatus::Running {
             self.status = SessionStatus::Paused;
             let _ = self.event_tx.send(SessionEvent::StatusChanged {
-                session: self.name.clone(),  // Use name for daemon lookup
+                session: self.name.clone(), // Use name for daemon lookup
                 status: SessionStatus::Paused,
             });
         }
@@ -211,7 +231,7 @@ impl Session {
         if self.status == SessionStatus::Paused {
             self.status = SessionStatus::Running;
             let _ = self.event_tx.send(SessionEvent::StatusChanged {
-                session: self.name.clone(),  // Use name for daemon lookup
+                session: self.name.clone(), // Use name for daemon lookup
                 status: SessionStatus::Running,
             });
         }
@@ -223,20 +243,22 @@ impl Session {
         self.pty = None; // Drop PTY, which sends SIGHUP
         self.status = SessionStatus::Stopped;
         let _ = self.event_tx.send(SessionEvent::StatusChanged {
-            session: self.name.clone(),  // Use name for daemon lookup
+            session: self.name.clone(), // Use name for daemon lookup
             status: SessionStatus::Stopped,
         });
         let _ = self.event_tx.send(SessionEvent::Terminated {
-            session: self.name.clone(),  // Use name for daemon lookup
+            session: self.name.clone(), // Use name for daemon lookup
         });
         Ok(())
     }
 
     /// Resize the PTY
     pub fn resize(&mut self, cols: u16, rows: u16) -> Result<()> {
-        if let Some(pty) = &self.pty {
+        if let Some(pty) = &mut self.pty {
             pty.resize(PtySize { cols, rows })?;
         }
+        // Update screen buffer size
+        self.screen_buffer = ScreenBuffer::new(cols, rows);
         Ok(())
     }
 
@@ -311,5 +333,20 @@ impl Session {
     /// Get the output buffer (pub for daemon access within crate)
     pub(crate) fn output_buffer(&self) -> &OutputBuffer {
         &self.output_buffer
+    }
+
+    /// Send control key to the session
+    pub fn send_key(&mut self, key: &Key) -> Result<()> {
+        if let Some(pty) = &mut self.pty {
+            let bytes = key.to_bytes();
+            pty.write_raw(&bytes)
+                .with_context(|| format!("Failed to send key: {:?}", key))?;
+        }
+        Ok(())
+    }
+
+    /// Get current screen content
+    pub fn get_screen(&self) -> ScreenContent {
+        self.screen_buffer.get_content()
     }
 }

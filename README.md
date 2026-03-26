@@ -58,6 +58,46 @@ ccmux subscribe <session> --since 1732560000000  # Only output after Unix epoch 
 # Wait for specific output pattern
 ccmux wait <session> "pattern"
 ccmux wait <session> "完成|错误" --timeout 120
+
+# Get screen content (for interactive menu navigation)
+ccmux screen <session>
+ccmux screen <session> --json  # Machine-readable JSON output
+```
+
+### Interactive Menu Control
+
+```bash
+# Send a command that shows a menu
+ccmux send backend "/help claude code"
+
+# Wait for menu to appear
+sleep 0.5
+
+# Get screen content (includes menu options)
+ccmux screen backend
+
+# Navigate menu
+ccmux send-key backend down
+ccmux send-key backend down
+
+# Select option
+ccmux send-key backend enter
+```
+
+### Programmatic Control (Enhanced)
+
+```bash
+# Get screen as JSON for parsing
+SCREEN=$(ccmux screen backend --json)
+
+# Extract mode using jq
+MODE=$(echo "$SCREEN" | jq -r '.mode')
+
+# Act based on mode
+if [ "$MODE" = "menu" ]; then
+    ccmux send-key backend down
+    ccmux send-key backend enter
+fi
 ```
 
 ### Example: Claude Code controlling Claude Code
