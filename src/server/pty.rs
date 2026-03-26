@@ -116,6 +116,14 @@ impl Pty {
         Ok(n)
     }
 
+    /// Write raw bytes to the PTY master (sends to child stdin)
+    /// Unlike write(), this does not add any trailing characters.
+    pub fn write_raw(&mut self, data: &[u8]) -> Result<usize> {
+        let n = self.master.write(data)?;
+        self.master.flush()?;
+        Ok(n)
+    }
+
     /// Read from the PTY master (non-blocking, returns 0 if no data available)
     pub fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
         match self.master.read(buf) {
