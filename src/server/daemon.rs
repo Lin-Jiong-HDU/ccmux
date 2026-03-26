@@ -501,7 +501,7 @@ impl Daemon {
             Request::SendKey { session, key } => {
                 debug!("Sending key to session: {}", session);
                 if let Some(s) = self.sessions.get_mut(&session) {
-                    s.send_key(key)?;
+                    s.send_key(&key)?;
                     Ok(Response::success(serde_json::to_value("Key sent")?))
                 } else {
                     warn!("Session not found: {}", session);
@@ -512,7 +512,7 @@ impl Daemon {
             Request::GetScreen { session } => {
                 debug!("Getting screen for session: {}", session);
                 if let Some(s) = self.sessions.get_mut(&session) {
-                    let content = s.get_screen_content()?;
+                    let content = s.get_screen();
                     Ok(Response::success(serde_json::to_value(content)?))
                 } else {
                     warn!("Session not found: {}", session);
