@@ -484,7 +484,19 @@ impl Daemon {
                     "Reading output from session: {} (lines: {:?})",
                     session, lines
                 );
-                if let Some(s) = self.sessions.get_mut(&session) {
+
+                let count = lines.unwrap_or(50);
+
+                // Check bypass sessions first
+                if let Some(s) = self.bypass_sessions.get(&session) {
+                    let lines_vec = s.get_last_lines(count);
+                    Ok(Response::success(
+                        serde_json::to_value(lines_vec)
+                            .context("Failed to serialize output lines")?,
+                    ))
+                }
+                // Then check PTY sessions
+                else if let Some(s) = self.sessions.get_mut(&session) {
                     let output = s.read_output().with_context(|| {
                         format!("Failed to read output from session {}", session)
                     })?;
@@ -494,7 +506,7 @@ impl Daemon {
                     } else {
                         output
                             .lines()
-                            .take(lines.unwrap_or(50))
+                            .take(count)
                             .map(|s| s.to_string())
                             .collect()
                     };
@@ -563,7 +575,31 @@ impl Daemon {
             Request::Wait { session, pattern } => {
                 debug!("Waiting for pattern '{}' in session: {}", pattern, session);
 
-                if let Some(s) = self.sessions.get_mut(&session) {
+                // Check bypass sessions first
+                if let Some(s) = self.bypass_sessions.get_mut(&session) {
+                    s.refresh()?;
+
+                    // Check if completed
+                    if s.is_completed() {
+                        return Ok(Response::success(serde_json::to_value(WaitResult {
+                            matched: true,
+                            pattern: Some(pattern.clone()),
+                            output: None,
+                            timestamp: None,
+                        })?));
+                    }
+
+                    // Scan output.log for pattern
+                    let matched = s.find_pattern_in_output(&pattern);
+                    Ok(Response::success(serde_json::to_value(WaitResult {
+                        matched,
+                        pattern: Some(pattern),
+                        output: None,
+                        timestamp: None,
+                    })?))
+                }
+                // Then check PTY sessions
+                else if let Some(s) = self.sessions.get_mut(&session) {
                     // Pull fresh output from PTY before searching buffer
                     let _ = s.read_output();
 
