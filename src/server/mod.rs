@@ -1,5 +1,6 @@
 //! Server module
 
+pub mod bypass_exec;
 pub mod daemon;
 pub mod interaction_detector;
 pub mod pty;
@@ -8,6 +9,7 @@ pub mod session;
 pub mod status_file;
 pub mod strategy;
 
+pub use bypass_exec::{execute_bypass_command, is_process_running};
 pub use daemon::{Daemon, DaemonConfig};
 pub use interaction_detector::InteractionDetector;
 pub use pty::{Pty, PtySize};
