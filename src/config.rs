@@ -34,6 +34,8 @@ pub struct StrategyConfig {
     pub command_exec: ActionMode,
     #[serde(default)]
     pub tool_use: ActionMode,
+    #[serde(default)]
+    pub bypass_permissions: bool,
 }
 
 /// Default configuration section
@@ -87,6 +89,7 @@ impl Default for Config {
                 file_write: ActionMode::Pause,
                 command_exec: ActionMode::Pause,
                 tool_use: ActionMode::Auto,
+                bypass_permissions: false,
             },
         );
 
@@ -97,6 +100,7 @@ impl Default for Config {
                 file_write: ActionMode::Auto,
                 command_exec: ActionMode::Auto,
                 tool_use: ActionMode::Auto,
+                bypass_permissions: false,
             },
         );
 
@@ -107,6 +111,18 @@ impl Default for Config {
                 file_write: ActionMode::Pause,
                 command_exec: ActionMode::Pause,
                 tool_use: ActionMode::Pause,
+                bypass_permissions: false,
+            },
+        );
+
+        strategy.insert(
+            "bypass".to_string(),
+            StrategyConfig {
+                file_read: ActionMode::Auto,
+                file_write: ActionMode::Auto,
+                command_exec: ActionMode::Auto,
+                tool_use: ActionMode::Auto,
+                bypass_permissions: true,
             },
         );
 
