@@ -2,7 +2,7 @@
 
 use crate::config::Config;
 use crate::protocol::{Request, Response, StreamEvent, WaitResult};
-use crate::server::{Session, SessionEvent};
+use crate::server::{BypassSession, Session, SessionEvent};
 use crate::state::State;
 use anyhow::{Context, Result};
 use std::collections::HashMap;
@@ -49,6 +49,8 @@ pub struct Daemon {
     state: State,
     config_loader: Config,
     sessions: HashMap<String, Session>,
+    bypass_sessions: HashMap<String, BypassSession>,
+    ccmux_base_dir: PathBuf,
     event_rx: mpsc::UnboundedReceiver<SessionEvent>,
     event_tx: mpsc::UnboundedSender<SessionEvent>,
     request_rx: mpsc::Receiver<InternalRequest>,
@@ -70,6 +72,10 @@ impl Daemon {
             Config::default()
         });
 
+        let ccmux_base_dir = dirs::home_dir()
+            .map(|p| p.join(".ccmux"))
+            .unwrap_or_else(|| PathBuf::from(".ccmux"));
+
         debug!(
             "Daemon initialized with socket: {}",
             config.socket_path.display()
@@ -80,6 +86,8 @@ impl Daemon {
             state,
             config_loader,
             sessions: HashMap::new(),
+            bypass_sessions: HashMap::new(),
+            ccmux_base_dir,
             event_rx,
             event_tx,
             request_rx,
@@ -280,7 +288,11 @@ impl Daemon {
         match request {
             Request::List => {
                 debug!("Listing sessions");
-                let sessions: Vec<_> = self.sessions.values().map(|s| s.info()).collect();
+                let mut sessions: Vec<_> = self.sessions.values().map(|s| s.info()).collect();
+                // Add bypass sessions to the list
+                for s in self.bypass_sessions.values() {
+                    sessions.push(s.info());
+                }
                 Ok(Response::success(
                     serde_json::to_value(sessions).context("Failed to serialize session list")?,
                 ))
@@ -289,7 +301,26 @@ impl Daemon {
             Request::Status { session } => {
                 if let Some(name) = session {
                     debug!("Getting status for session: {}", name);
-                    if let Some(s) = self.sessions.get(&name) {
+
+                    // Check bypass sessions first
+                    if let Some(s) = self.bypass_sessions.get_mut(&name) {
+                        s.refresh()?;
+                        let status = s.status();
+                        let last_lines = s.get_last_lines(10);
+
+                        let detail = crate::protocol::SessionStatusDetail {
+                            session: s.name.clone(),
+                            status,
+                            strategy: s.strategy.clone(),
+                            uptime: "-".to_string(),
+                            cwd: s.cwd.clone(),
+                            pid: s.status_file().pid,
+                            last_lines,
+                        };
+                        Ok(Response::success(serde_json::to_value(detail)?))
+                    }
+                    // Then check PTY sessions
+                    else if let Some(s) = self.sessions.get(&name) {
                         Ok(Response::success(
                             serde_json::to_value(s.status_detail())
                                 .context("Failed to serialize session status detail")?,
@@ -300,9 +331,24 @@ impl Daemon {
                     }
                 } else {
                     debug!("Getting status for all sessions");
-                    // When no session specified, return list of status details
-                    let details: Vec<_> =
+                    // When no session specified, return list of status details for both session types
+                    let mut details: Vec<_> =
                         self.sessions.values().map(|s| s.status_detail()).collect();
+
+                    // Add bypass session details
+                    for s in self.bypass_sessions.values_mut() {
+                        let _ = s.refresh();
+                        details.push(crate::protocol::SessionStatusDetail {
+                            session: s.name.clone(),
+                            status: s.status(),
+                            strategy: s.strategy.clone(),
+                            uptime: "-".to_string(),
+                            cwd: s.cwd.clone(),
+                            pid: s.status_file().pid,
+                            last_lines: s.get_last_lines(10),
+                        });
+                    }
+
                     Ok(Response::success(
                         serde_json::to_value(details).context("Failed to serialize status list")?,
                     ))
@@ -320,51 +366,86 @@ impl Daemon {
                 let strategy =
                     strategy.unwrap_or_else(|| self.config_loader.default_strategy().to_string());
 
-                let log_path = State::log_path(&name)
-                    .with_context(|| format!("Failed to get log path for session {}", name))?;
+                // Check if this is a bypass strategy
+                let is_bypass = self.config_loader
+                    .get_strategy(&strategy)
+                    .map(|s| s.bypass_permissions)
+                    .unwrap_or(false);
 
-                let session = Session::new(
-                    name.clone(),
-                    cwd.clone(),
-                    strategy,
-                    self.event_tx.clone(),
-                    log_path,
-                )
-                .with_context(|| format!("Failed to create session {}", name))?;
+                if is_bypass {
+                    // Create bypass session
+                    info!("Creating bypass session: {}", name);
+                    let session = BypassSession::new(
+                        name.clone(),
+                        cwd.clone(),
+                        strategy,
+                        self.ccmux_base_dir.clone(),
+                    ).with_context(|| format!("Failed to create bypass session {}", name))?;
 
-                // Add to state BEFORE starting so event handlers can find it
-                self.state.add_session(session.to_state());
-                self.sessions.insert(name.clone(), session);
+                    self.bypass_sessions.insert(name.clone(), session);
 
-                // Now start the session (this sends events that need state to exist)
-                let claude_path =
-                    which::which("claude").unwrap_or_else(|_| PathBuf::from("claude"));
+                    let info = {
+                        let s = self.bypass_sessions.get(&name).unwrap();
+                        s.info()
+                    };
 
-                let mut cmd = std::process::Command::new(&claude_path);
-                cmd.current_dir(&cwd);
-
-                // Get mutable reference to start the session
-                if let Some(s) = self.sessions.get_mut(&name) {
-                    if let Err(e) = s.start(cmd) {
-                        warn!("Failed to start session {}: {}", name, e);
-                        // Session is created but not started - user can retry
-                    }
-                    let info = s.info();
-                    self.state
-                        .save()
-                        .context("Failed to save state after creating session")?;
-                    debug!("Session created successfully: {}", name);
-                    Ok(Response::success(
-                        serde_json::to_value(info).context("Failed to serialize session info")?,
-                    ))
+                    debug!("Bypass session created successfully: {}", name);
+                    Ok(Response::success(serde_json::to_value(info)?))
                 } else {
-                    anyhow::bail!("Session disappeared after insertion")
+                    // Create PTY session (existing logic)
+                    let log_path = State::log_path(&name)
+                        .with_context(|| format!("Failed to get log path for session {}", name))?;
+
+                    let session = Session::new(
+                        name.clone(),
+                        cwd.clone(),
+                        strategy,
+                        self.event_tx.clone(),
+                        log_path,
+                    )
+                    .with_context(|| format!("Failed to create session {}", name))?;
+
+                    // Add to state BEFORE starting so event handlers can find it
+                    self.state.add_session(session.to_state());
+                    self.sessions.insert(name.clone(), session);
+
+                    // Now start the session (this sends events that need state to exist)
+                    let claude_path =
+                        which::which("claude").unwrap_or_else(|_| PathBuf::from("claude"));
+
+                    let mut cmd = std::process::Command::new(&claude_path);
+                    cmd.current_dir(&cwd);
+
+                    // Get mutable reference to start the session
+                    if let Some(s) = self.sessions.get_mut(&name) {
+                        if let Err(e) = s.start(cmd) {
+                            warn!("Failed to start session {}: {}", name, e);
+                            // Session is created but not started - user can retry
+                        }
+                        let info = s.info();
+                        self.state
+                            .save()
+                            .context("Failed to save state after creating session")?;
+                        debug!("Session created successfully: {}", name);
+                        Ok(Response::success(
+                            serde_json::to_value(info).context("Failed to serialize session info")?,
+                        ))
+                    } else {
+                        anyhow::bail!("Session disappeared after insertion")
+                    }
                 }
             }
 
             Request::Kill { session } => {
                 info!("Killing session: {}", session);
-                if let Some(mut s) = self.sessions.remove(&session) {
+
+                // Check bypass sessions first
+                if let Some(mut s) = self.bypass_sessions.remove(&session) {
+                    s.kill()?;
+                    Ok(Response::success(serde_json::json!({"killed": session, "mode": "bypass"})))
+                }
+                // Then check PTY sessions
+                else if let Some(mut s) = self.sessions.remove(&session) {
                     s.kill()
                         .with_context(|| format!("Failed to kill session {}", session))?;
                     self.state.remove_session(&session);
@@ -380,7 +461,15 @@ impl Daemon {
 
             Request::Send { session, text } => {
                 debug!("Sending to session {}: {} bytes", session, text.len());
-                if let Some(s) = self.sessions.get_mut(&session) {
+
+                // Check bypass sessions first
+                if let Some(s) = self.bypass_sessions.get_mut(&session) {
+                    s.send(&text)
+                        .with_context(|| format!("Failed to send to bypass session {}", session))?;
+                    Ok(Response::success(serde_json::json!({"sent": true, "mode": "bypass"})))
+                }
+                // Then check PTY sessions
+                else if let Some(s) = self.sessions.get_mut(&session) {
                     s.send(&text)
                         .with_context(|| format!("Failed to send to session {}", session))?;
                     Ok(Response::success(serde_json::json!({"sent": true})))

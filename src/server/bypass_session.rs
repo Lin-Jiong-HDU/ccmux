@@ -174,4 +174,9 @@ impl BypassSession {
 
         re.is_match(&content)
     }
+
+    /// Get the status file (for daemon access)
+    pub fn status_file(&self) -> &StatusFile {
+        &self.status_file
+    }
 }
