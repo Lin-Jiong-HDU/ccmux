@@ -61,14 +61,12 @@ impl BypassSession {
 
         let output_path = StatusFile::output_path(&self.base_dir, &self.name);
 
-        // Truncate output.log before each new task to avoid false-positive pattern matches
-        // from previous runs
+        // Truncate output.log to avoid false-positive pattern matches from previous runs
         if output_path.exists() {
             std::fs::write(&output_path, "")
                 .with_context(|| format!("Failed to truncate output file: {:?}", output_path))?;
         }
 
-        // Execute in background
         let pid = bypass_exec::execute_bypass_command(
             &self.name,
             text,
@@ -76,7 +74,6 @@ impl BypassSession {
             &output_path,
         )?;
 
-        // Update status
         self.status_file.command = format!(
             "claude --dangerously-skip-permissions {}",
             shell_escape::escape(text.into())
@@ -99,14 +96,14 @@ impl BypassSession {
     /// Get session info
     pub fn info(&self) -> SessionInfo {
         SessionInfo {
-            id: self.name.clone(),  // Use name as ID for bypass
+            id: self.name.clone(),
             status: self.status(),
             pid: self.status_file.pid,
             cwd: self.cwd.clone(),
             strategy: self.strategy.clone(),
             created_at: self.status_file.start_time.clone(),
-            uptime_secs: None,  // Not tracked for bypass
-            last_output: None,  // Not buffered for bypass
+            uptime_secs: None,
+            last_output: None,
         }
     }
 

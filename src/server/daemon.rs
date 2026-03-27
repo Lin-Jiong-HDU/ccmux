@@ -389,7 +389,6 @@ impl Daemon {
                     .unwrap_or(false);
 
                 if is_bypass {
-                    // Create bypass session
                     info!("Creating bypass session: {}", name);
                     let session = BypassSession::new(
                         name.clone(),
@@ -408,7 +407,6 @@ impl Daemon {
                     debug!("Bypass session created successfully: {}", name);
                     Ok(Response::success(serde_json::to_value(info)?))
                 } else {
-                    // Create PTY session (existing logic)
                     let log_path = State::log_path(&name)
                         .with_context(|| format!("Failed to get log path for session {}", name))?;
 
@@ -425,14 +423,12 @@ impl Daemon {
                     self.state.add_session(session.to_state());
                     self.sessions.insert(name.clone(), session);
 
-                    // Now start the session (this sends events that need state to exist)
                     let claude_path =
                         which::which("claude").unwrap_or_else(|_| PathBuf::from("claude"));
 
                     let mut cmd = std::process::Command::new(&claude_path);
                     cmd.current_dir(&cwd);
 
-                    // Get mutable reference to start the session
                     if let Some(s) = self.sessions.get_mut(&name) {
                         if let Err(e) = s.start(cmd) {
                             warn!("Failed to start session {}: {}", name, e);
@@ -558,7 +554,6 @@ impl Daemon {
             Request::StartDaemon => Ok(Response::error("Daemon already running")),
 
             Request::StopDaemon => {
-                // Signal shutdown
                 Ok(Response::success(serde_json::json!({"stopping": true})))
             }
 
