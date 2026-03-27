@@ -8,6 +8,7 @@ fn test_strategy_auto_safe() {
         file_write: ActionMode::Pause,
         command_exec: ActionMode::Pause,
         tool_use: ActionMode::Auto,
+        bypass_permissions: false,
     };
 
     let strategy = Strategy::from_config(config);
@@ -24,6 +25,7 @@ fn test_strategy_auto_all() {
         file_write: ActionMode::Auto,
         command_exec: ActionMode::Auto,
         tool_use: ActionMode::Auto,
+        bypass_permissions: false,
     };
 
     let strategy = Strategy::from_config(config);
@@ -40,6 +42,7 @@ fn test_strategy_manual() {
         file_write: ActionMode::Pause,
         command_exec: ActionMode::Pause,
         tool_use: ActionMode::Pause,
+        bypass_permissions: false,
     };
 
     let strategy = Strategy::from_config(config);
@@ -56,6 +59,7 @@ fn test_strategy_evaluate() {
         file_write: ActionMode::Pause,
         command_exec: ActionMode::Pause,
         tool_use: ActionMode::Auto,
+        bypass_permissions: false,
     };
     let strategy = Strategy::from_config(config);
 
@@ -75,6 +79,7 @@ fn test_strategy_engine() {
         file_write: ActionMode::Pause,
         command_exec: ActionMode::Pause,
         tool_use: ActionMode::Auto,
+        bypass_permissions: false,
     };
 
     engine.add_strategy("auto-safe".to_string(), Strategy::from_config(config));
