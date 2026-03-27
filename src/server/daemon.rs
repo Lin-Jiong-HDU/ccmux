@@ -289,8 +289,14 @@ impl Daemon {
             Request::List => {
                 debug!("Listing sessions");
                 let mut sessions: Vec<_> = self.sessions.values().map(|s| s.info()).collect();
-                // Add bypass sessions to the list
-                for s in self.bypass_sessions.values() {
+                // Add bypass sessions to the list, refreshing them from disk first
+                for s in self.bypass_sessions.values_mut() {
+                    if let Err(e) = s.refresh() {
+                        warn!(
+                            "[{}] Failed to refresh bypass session before listing: {}",
+                            s.name, e
+                        );
+                    }
                     sessions.push(s.info());
                 }
                 Ok(Response::success(
@@ -337,16 +343,26 @@ impl Daemon {
 
                     // Add bypass session details
                     for s in self.bypass_sessions.values_mut() {
-                        let _ = s.refresh();
-                        details.push(crate::protocol::SessionStatusDetail {
-                            session: s.name.clone(),
-                            status: s.status(),
-                            strategy: s.strategy.clone(),
-                            uptime: "-".to_string(),
-                            cwd: s.cwd.clone(),
-                            pid: s.status_file().pid,
-                            last_lines: s.get_last_lines(10),
-                        });
+                        match s.refresh() {
+                            Ok(()) => {
+                                details.push(crate::protocol::SessionStatusDetail {
+                                    session: s.name.clone(),
+                                    status: s.status(),
+                                    strategy: s.strategy.clone(),
+                                    uptime: "-".to_string(),
+                                    cwd: s.cwd.clone(),
+                                    pid: s.status_file().pid,
+                                    last_lines: s.get_last_lines(10),
+                                });
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "Failed to refresh bypass session '{}': {}",
+                                    s.name, e
+                                );
+                                // Skip adding this session to avoid returning stale data
+                            }
+                        }
                     }
 
                     Ok(Response::success(
@@ -579,10 +595,11 @@ impl Daemon {
                 if let Some(s) = self.bypass_sessions.get_mut(&session) {
                     s.refresh()?;
 
-                    // Check if completed
+                    // Check if completed - only match if pattern is explicitly "completed"/"failed"
                     if s.is_completed() {
+                        let is_completion_pattern = pattern == "completed" || pattern == "failed";
                         return Ok(Response::success(serde_json::to_value(WaitResult {
-                            matched: true,
+                            matched: is_completion_pattern,
                             pattern: Some(pattern.clone()),
                             output: None,
                             timestamp: None,

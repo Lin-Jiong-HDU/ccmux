@@ -184,11 +184,13 @@ ccmux wait worker "完成|错误"
 
 **Skill Integration:**
 
-The Claude Code instance running the task should update status.json when complete:
+The Claude Code instance running the task should update status.json when complete. Use `jq` to preserve existing fields:
 
 ```bash
-# When task completes, the skill should do:
-echo '{"status":"completed","exit_code":0}' > ~/.ccmux/sessions/worker/status.json
+# When task completes, the skill should update only the relevant fields:
+STATUS_FILE="$HOME/.ccmux/sessions/worker/status.json"
+tmp=$(mktemp)
+jq '.status = "completed" | .exit_code = 0 | .end_time = "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")"'" "$STATUS_FILE" > "$tmp" && mv "$tmp" "$STATUS_FILE"
 ```
 
 **Status File Schema:**
@@ -196,7 +198,7 @@ echo '{"status":"completed","exit_code":0}' > ~/.ccmux/sessions/worker/status.js
 ```json
 {
   "name": "worker",
-  "status": "running",  // idle | running | completed | failed
+  "status": "running",
   "exit_code": null,
   "pid": 12345,
   "command": "claude --dangerously-skip-permissions \"task\"",
@@ -204,6 +206,8 @@ echo '{"status":"completed","exit_code":0}' > ~/.ccmux/sessions/worker/status.js
   "end_time": null
 }
 ```
+
+Where `status` is one of: `idle`, `running`, `completed`, or `failed`.
 
 ## Architecture
 

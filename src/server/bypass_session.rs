@@ -2,7 +2,7 @@
 
 use crate::protocol::{SessionInfo, SessionStatus};
 use crate::server::status_file::{StatusFile, BypassStatus};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use regex::Regex;
 use std::path::PathBuf;
 
@@ -60,6 +60,13 @@ impl BypassSession {
         use crate::server::bypass_exec;
 
         let output_path = StatusFile::output_path(&self.base_dir, &self.name);
+
+        // Truncate output.log before each new task to avoid false-positive pattern matches
+        // from previous runs
+        if output_path.exists() {
+            std::fs::write(&output_path, "")
+                .with_context(|| format!("Failed to truncate output file: {:?}", output_path))?;
+        }
 
         // Execute in background
         let pid = bypass_exec::execute_bypass_command(

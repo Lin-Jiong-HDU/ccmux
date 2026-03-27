@@ -56,7 +56,7 @@ impl StatusFile {
         Self::session_dir(base, name).join("output.log")
     }
 
-    /// Save status to file
+    /// Save status to file (atomic write)
     pub fn save(&self, base: &Path) -> Result<()> {
         let path = Self::status_path(base, &self.name);
 
@@ -69,8 +69,19 @@ impl StatusFile {
         let content = serde_json::to_string_pretty(self)
             .context("Failed to serialize status")?;
 
-        fs::write(&path, content)
-            .with_context(|| format!("Failed to write status file: {:?}", path))?;
+        // Atomic write pattern: write to temp file, then rename
+        // This prevents torn reads if another process reads during write
+        let temp_path = path.with_extension("tmp");
+        fs::write(&temp_path, content)
+            .with_context(|| format!("Failed to write temp file: {:?}", temp_path))?;
+
+        // Sync to ensure data is written to disk before rename
+        let file = fs::File::open(&temp_path)?;
+        file.sync_all()
+            .with_context(|| format!("Failed to sync temp file: {:?}", temp_path))?;
+
+        fs::rename(&temp_path, &path)
+            .with_context(|| format!("Failed to rename temp file to: {:?}", path))?;
 
         Ok(())
     }
@@ -97,6 +108,9 @@ impl StatusFile {
     pub fn mark_running(&mut self, pid: u32) {
         self.status = BypassStatus::Running;
         self.pid = Some(pid);
+        // Clear any previous result information when transitioning back to running
+        self.exit_code = None;
+        self.end_time = None;
     }
 
     /// Mark as completed
